@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class Linterna : MonoBehaviour
 {
-    public Light luzLinterna;               // arrastra aquí la Spot Light
+    public Light luzLinterna;               
     public KeyCode teclaLinterna = KeyCode.L;
     public bool empiezaEncendida = false;
 
