@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class ZonaActivarCarro : MonoBehaviour
 {
-    public CarroPerseguidor carro; // arrastra aquí el carro
+    public CarroPerseguidor carro; 
 
     private void OnTriggerEnter(Collider other)
     {

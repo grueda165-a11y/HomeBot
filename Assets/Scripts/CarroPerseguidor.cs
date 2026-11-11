@@ -4,7 +4,7 @@ using UnityEngine;
 public class CarroPerseguidor : MonoBehaviour
 {
     [Header("Persecución")]
-    public Transform jugador;           // si lo dejas vacío, busca el objeto con tag Player
+    public Transform jugador;          
     public float velocidad = 6f;
     public float velocidadGiro = 4f;
 
@@ -52,7 +52,6 @@ public class CarroPerseguidor : MonoBehaviour
 
     void Reiniciar()
     {
-        // Cuando el jugador muere, el carro vuelve a su sitio y espera otra activación
         activo = false;
         _rb.position = posicionInicial;
         _rb.rotation = rotacionInicial;
@@ -62,7 +61,6 @@ public class CarroPerseguidor : MonoBehaviour
     {
         if (!activo || jugador == null) return;
 
-        // Dirección hacia el jugador, solo en el plano horizontal
         Vector3 direccion = jugador.position - transform.position;
         direccion.y = 0f;
 
@@ -73,7 +71,6 @@ public class CarroPerseguidor : MonoBehaviour
             _rb.MoveRotation(nuevaRot);
         }
 
-        // Avanza hacia donde mira, como un carro
         _rb.MovePosition(_rb.position + transform.forward * velocidad * Time.fixedDeltaTime);
     }
 
