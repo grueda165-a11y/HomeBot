@@ -2,6 +2,10 @@ using UnityEngine;
 
 public class ObjetoSumarVida : MonoBehaviour
 {
+    [Tooltip("Si está activo, la batería llena la barra de tiempo por completo.")]
+    public bool recargaCompleta = true;
+
+    [Tooltip("Segundos a sumar cuando 'recargaCompleta' está desactivado.")]
     public float segundosASumar = 30f;
 
     private Collider _collider;
@@ -33,7 +37,10 @@ public class ObjetoSumarVida : MonoBehaviour
             VidaJugador vida = other.GetComponent<VidaJugador>();
             if (vida != null)
             {
-                vida.SumarVida(segundosASumar);
+                if (recargaCompleta)
+                    vida.RecargarTiempo();
+                else
+                    vida.SumarVida(segundosASumar);
                 Desaparecer();
             }
         }
