@@ -3,7 +3,7 @@ using UnityEngine;
 public class VidaJugador : MonoBehaviour
 {
     [Header("Configuración de Vida (tiempo)")]
-    public float vidaMaxima = 120f;
+    public float vidaMaxima = 90f;
     public float vidaActual;
     public float perdidaPorSegundo = 1f;
 

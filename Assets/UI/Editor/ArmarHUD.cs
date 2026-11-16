@@ -9,26 +9,30 @@ using UnityEngine.UI;
 // Arma la interfaz dentro del Canvas de la escena abierta:
 //  - 3 caritas de vidas (arriba a la derecha) con efecto eléctrico
 //  - Contador de intentos debajo de las caritas
-//  - Barra de tiempo un poco más arriba, con efecto eléctrico al recargar
-//  - Pantalla de muerte (bordes rojos + Reintentar / Salir)
-//  - Quita los textos viejos de tiempo y vidas
+//  - Pila de juguete abajo al centro (90 s), con alerta roja y rebote al recargar
+//  - Pantalla de muerte: el robot se apaga (estática, apagado de tele, carita con ojos en X)
+//  - Quita los textos viejos y la barra plana anterior
 // Se puede volver a ejecutar sin duplicar nada, y todo se puede deshacer con Ctrl+Z.
 public static class ArmarHUD
 {
     const string CarpetaSprites = "Assets/UI/Sprites/";
     const string NombreVidas = "HUD_Vidas";
     const string NombreIntentos = "HUD_Intentos";
+    const string NombrePila = "HUD_Bateria";
     const string NombreMuerte = "PantallaMuerte";
     const string NombreRayos = "Rayos";
 
     const float Margen = 40f;
     const float TamCarita = 110f;
     const float EspacioCaritas = 16f;
-    const float AlturaBarra = 160f;   // distancia del centro de la barra al borde inferior
+
+    // Pila: 616 x 140 (sprite de 704x160), con su centro a 105 px del borde inferior (~35 px de aire abajo)
+    static readonly Vector2 TamPila = new Vector2(616f, 140f);
+    const float AlturaPila = 105f;
+    const float TiempoBateria = 90f;
 
     static readonly Color ColorRayo = new Color(0.45f, 0.9f, 1f, 1f);
-    static readonly Color ColorVerde = new Color(0.24f, 0.86f, 0.35f);
-    static readonly Color ColorRojo = new Color(0.90f, 0.22f, 0.23f);
+    static readonly Color ColorTextoRobot = new Color(0.78f, 0.88f, 0.9f);
 
     [MenuItem("HomeBot/Armar HUD")]
     public static void Armar()
@@ -36,9 +40,13 @@ public static class ArmarHUD
         Sprite marco = CargarSprite("Carita_Marco.png");
         Sprite pantalla = CargarSprite("Carita_Pantalla.png");
         Sprite cara = CargarSprite("Carita_Cara.png");
-        Sprite vineta = CargarSprite("Vineta.png");
+        Sprite ojosX = CargarSprite("Carita_OjosX.png");
+        Sprite carcasa = CargarSprite("Pila_Carcasa.png");
+        Sprite rellenoPila = CargarSprite("Pila_Relleno.png");
+        Sprite brillo = CargarSprite("Pila_Brillo.png");
         Sprite boton = CargarSprite("Boton.png", new Vector4(24, 24, 24, 24));
-        if (marco == null || pantalla == null || cara == null || vineta == null || boton == null)
+        if (marco == null || pantalla == null || cara == null || ojosX == null ||
+            carcasa == null || rellenoPila == null || brillo == null || boton == null)
         {
             EditorUtility.DisplayDialog("Armar HUD", "Faltan sprites en " + CarpetaSprites, "OK");
             return;
@@ -55,13 +63,21 @@ public static class ArmarHUD
         int grupo = Undo.GetCurrentGroup();
 
         VidaJugador jugador = Object.FindFirstObjectByType<VidaJugador>();
+        if (jugador != null)
+        {
+            Undo.RecordObject(jugador, "Tiempo de batería");
+            jugador.vidaMaxima = TiempoBateria;
+            jugador.vidaActual = TiempoBateria;
+        }
+
         Transform raiz = canvas.transform;
 
         QuitarTextosViejos(raiz);
-        ConectarBarra(raiz, jugador);
+        QuitarBarraVieja(raiz);
+        CrearPila(raiz, jugador, carcasa, rellenoPila, brillo);
         CrearVidas(raiz, jugador, marco, pantalla, cara);
         CrearIntentos(raiz);
-        CrearPantallaMuerte(raiz, jugador, vineta, boton);
+        CrearPantallaMuerte(raiz, jugador, marco, pantalla, ojosX, boton);
         AsegurarEventSystem();
 
         Undo.CollapseUndoOperations(grupo);
@@ -75,7 +91,12 @@ public static class ArmarHUD
     {
         string ruta = CarpetaSprites + archivo;
         TextureImporter importer = AssetImporter.GetAtPath(ruta) as TextureImporter;
-        if (importer == null) return null;
+        if (importer == null)
+        {
+            AssetDatabase.ImportAsset(ruta);
+            importer = AssetImporter.GetAtPath(ruta) as TextureImporter;
+            if (importer == null) return null;
+        }
 
         if (importer.textureType != TextureImporterType.Sprite || importer.mipmapEnabled || importer.spriteBorder != borde)
         {
@@ -89,7 +110,7 @@ public static class ArmarHUD
         return AssetDatabase.LoadAssetAtPath<Sprite>(ruta);
     }
 
-    // ---------- Textos viejos ----------
+    // ---------- Limpieza ----------
 
     static void QuitarTextosViejos(Transform canvas)
     {
@@ -102,78 +123,72 @@ public static class ArmarHUD
         }
     }
 
-    // ---------- Barra de tiempo ----------
-
-    static void ConectarBarra(Transform canvas, VidaJugador jugador)
+    static void QuitarBarraVieja(Transform canvas)
     {
-        Image relleno = null;
+        // La barra plana anterior: el objeto que contiene la imagen "fill".
         foreach (Image img in canvas.GetComponentsInChildren<Image>(true))
         {
-            if (img.name == "fill") { relleno = img; break; }
-        }
+            if (img == null || img.name != "fill") continue;
+            if (img.GetComponentInParent<BarraTiempo>(true) is BarraTiempo b && b.name == NombrePila) continue;
 
-        if (relleno == null)
-        {
-            Debug.LogWarning("Armar HUD: no encontré la imagen 'fill' de la barra.");
+            Transform viejo = img.transform.parent != null && img.transform.parent != canvas ? img.transform.parent : img.transform;
+            Undo.DestroyObjectImmediate(viejo.gameObject);
             return;
         }
+    }
 
-        Undo.RecordObject(relleno, "Barra de tiempo");
+    // ---------- Pila de juguete ----------
+
+    static void CrearPila(Transform canvas, VidaJugador jugador, Sprite carcasa, Sprite rellenoSprite, Sprite brillo)
+    {
+        Borrar(canvas, NombrePila);
+
+        GameObject pila = NuevoUI(NombrePila, canvas);
+        RectTransform rt = (RectTransform)pila.transform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);   // abajo al centro
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = TamPila;
+        rt.anchoredPosition = new Vector2(0f, AlturaPila);
+
+        Image imgCarcasa = Capa("Carcasa", pila.transform, carcasa);
+        imgCarcasa.preserveAspect = false;
+
+        // La carga va justo dentro de la ventana de la carcasa (medidas en píxeles del sprite de 704x160)
+        GameObject goRelleno = NuevoUI("Carga", pila.transform);
+        RectTransform rtRelleno = (RectTransform)goRelleno.transform;
+        rtRelleno.anchorMin = new Vector2(58f / 704f, 36f / 160f);
+        rtRelleno.anchorMax = new Vector2(598f / 704f, 124f / 160f);
+        rtRelleno.offsetMin = rtRelleno.offsetMax = Vector2.zero;
+        Image relleno = goRelleno.AddComponent<Image>();
+        relleno.sprite = rellenoSprite;
         relleno.type = Image.Type.Filled;
         relleno.fillMethod = Image.FillMethod.Horizontal;
         relleno.fillOrigin = (int)Image.OriginHorizontal.Left;
         relleno.fillAmount = 1f;
+        relleno.raycastTarget = false;
 
-        RectTransform barraRT = relleno.transform.parent as RectTransform;
-        if (barraRT == null || barraRT == canvas) barraRT = (RectTransform)relleno.transform;
-        GameObject barraGO = barraRT.gameObject;
+        Image imgBrillo = Capa("Brillo", pila.transform, brillo);
+        imgBrillo.preserveAspect = false;
 
-        // La barra estaba estirada con Scale; se pasa a tamaño real para que los rayos no se deformen.
-        QuitarEscala(barraRT);
+        // Chispita discreta al recargar: un solo rayo fino y muy corto, sin temblor ni parpadeo
+        EfectoElectrico efecto = AsegurarEfecto(pila, 2f, 1.2f);
+        efecto.duracion = 0.22f;
+        efecto.temblor = 0f;
+        efecto.parpadeo = 0f;
+        efecto.intervaloRayos = 0.08f;
+        efecto.rayos.cantidad = 1;
+        efecto.rayos.segmentos = 6;
+        efecto.rayos.desvio = 0.06f;
+        efecto.rayos.probabilidadRama = 0f;
+        efecto.rayos.alfaBrillo = 0.15f;
+        efecto.rayos.anchoBrillo = 2.5f;
 
-        // Un poco más arriba del borde inferior de la pantalla.
-        Undo.RecordObject(barraRT, "Barra de tiempo");
-        Vector2 tam = barraRT.sizeDelta;
-        barraRT.anchorMin = barraRT.anchorMax = new Vector2(0.5f, 0f);
-        barraRT.pivot = new Vector2(0.5f, 0.5f);
-        barraRT.sizeDelta = tam;
-        barraRT.anchoredPosition = new Vector2(0f, AlturaBarra);
-
-        EfectoElectrico efecto = AsegurarEfecto(barraGO, 22f, 3f);
-        Undo.RecordObject(efecto, "Barra de tiempo");
-        efecto.duracion = 0.7f;
-        efecto.temblor = 4f;
-
-        BarraTiempo barra = barraGO.GetComponent<BarraTiempo>();
-        if (barra == null) barra = Undo.AddComponent<BarraTiempo>(barraGO);
-
-        Undo.RecordObject(barra, "Barra de tiempo");
-        barra.relleno = relleno;
+        BarraTiempo barra = pila.AddComponent<BarraTiempo>();
         barra.jugador = jugador;
+        barra.relleno = relleno;
+        barra.objetoRebote = rt;
         barra.efecto = efecto;
-    }
-
-    static void QuitarEscala(RectTransform padre)
-    {
-        Vector3 s = padre.localScale;
-        if (Mathf.Approximately(s.x, 1f) && Mathf.Approximately(s.y, 1f)) return;
-        if (Mathf.Approximately(s.x, 0f) || Mathf.Approximately(s.y, 0f)) return;
-
-        Undo.RecordObject(padre, "Barra de tiempo");
-        padre.sizeDelta = new Vector2(padre.sizeDelta.x * s.x, padre.sizeDelta.y * s.y);
-        padre.localScale = Vector3.one;
-
-        foreach (Transform t in padre)
-        {
-            RectTransform hijo = t as RectTransform;
-            if (hijo == null || hijo.name == NombreRayos) continue;
-
-            Undo.RecordObject(hijo, "Barra de tiempo");
-            Vector3 hs = hijo.localScale;
-            hijo.sizeDelta = new Vector2(hijo.sizeDelta.x * hs.x * s.x, hijo.sizeDelta.y * hs.y * s.y);
-            hijo.anchoredPosition = new Vector2(hijo.anchoredPosition.x * s.x, hijo.anchoredPosition.y * s.y);
-            hijo.localScale = Vector3.one;
-        }
+        relleno.color = barra.colorLlena;
     }
 
     // ---------- Vidas ----------
@@ -222,18 +237,6 @@ public static class ArmarHUD
         foreach (Image p in pantallas) p.color = hud.colorTresVidas;
     }
 
-    static Image Capa(string nombre, Transform padre, Sprite sprite)
-    {
-        GameObject go = NuevoUI(nombre, padre);
-        Estirar((RectTransform)go.transform, 0f);
-
-        Image img = go.AddComponent<Image>();
-        img.sprite = sprite;
-        img.preserveAspect = true;
-        img.raycastTarget = false;
-        return img;
-    }
-
     // ---------- Intentos ----------
 
     static void CrearIntentos(Transform canvas)
@@ -246,21 +249,15 @@ public static class ArmarHUD
         rt.anchoredPosition = new Vector2(-Margen, -Margen - TamCarita - 12f);
         rt.sizeDelta = new Vector2(3 * TamCarita + 2 * EspacioCaritas, 60f);
 
-        TextMeshProUGUI texto = go.AddComponent<TextMeshProUGUI>();
-        texto.text = "Intento: 1";
-        texto.fontSize = 44;
-        texto.fontStyle = FontStyles.Bold;
-        texto.alignment = TextAlignmentOptions.TopRight;
-        texto.color = Color.white;
-        texto.raycastTarget = false;
+        TextMeshProUGUI texto = Texto(go, "Intento: 1", 44, TextAlignmentOptions.TopRight, Color.white);
 
         ContadorIntentos contador = go.AddComponent<ContadorIntentos>();
         contador.texto = texto;
     }
 
-    // ---------- Pantalla de muerte ----------
+    // ---------- Pantalla de muerte: robot apagado ----------
 
-    static void CrearPantallaMuerte(Transform canvas, VidaJugador jugador, Sprite vineta, Sprite boton)
+    static void CrearPantallaMuerte(Transform canvas, VidaJugador jugador, Sprite marco, Sprite pantalla, Sprite ojosX, Sprite boton)
     {
         Borrar(canvas, NombreMuerte);
 
@@ -272,58 +269,105 @@ public static class ArmarHUD
         cg.interactable = false;
         cg.blocksRaycasts = false;
 
-        // Fondo oscuro suave
-        GameObject oscuro = NuevoUI("Oscuro", panel.transform);
-        Estirar((RectTransform)oscuro.transform, 0f);
-        Image imgOscuro = oscuro.AddComponent<Image>();
-        imgOscuro.color = new Color(0f, 0f, 0f, 0.45f);
+        AudioSource audio = panel.AddComponent<AudioSource>();
+        audio.playOnAwake = false;
+        audio.spatialBlend = 0f;
 
-        // Bordes rojos
-        GameObject vin = NuevoUI("BordesRojos", panel.transform);
-        Estirar((RectTransform)vin.transform, 0f);
-        Image imgVineta = vin.AddComponent<Image>();
-        imgVineta.sprite = vineta;
-        imgVineta.color = new Color(0.85f, 0.03f, 0.03f, 0.95f);
-        imgVineta.raycastTarget = false;
+        // 1. Estática
+        GameObject goEstatica = NuevoUI("Estatica", panel.transform);
+        Estirar((RectTransform)goEstatica.transform, 0f);
+        RawImage estatica = goEstatica.AddComponent<RawImage>();
+        estatica.color = new Color(1f, 1f, 1f, 0.5f);
+        estatica.raycastTarget = false;
+        goEstatica.SetActive(false);
 
-        // Título
-        GameObject titulo = NuevoUI("Titulo", panel.transform);
-        RectTransform rtTitulo = (RectTransform)titulo.transform;
-        rtTitulo.anchorMin = rtTitulo.anchorMax = rtTitulo.pivot = new Vector2(0.5f, 0.5f);
-        rtTitulo.anchoredPosition = new Vector2(0f, 150f);
-        rtTitulo.sizeDelta = new Vector2(1100f, 170f);
-        TextMeshProUGUI txtTitulo = titulo.AddComponent<TextMeshProUGUI>();
-        txtTitulo.text = "SIN ENERGÍA";
-        txtTitulo.fontSize = 120;
-        txtTitulo.fontStyle = FontStyles.Bold;
-        txtTitulo.alignment = TextAlignmentOptions.Center;
-        txtTitulo.color = new Color(1f, 0.88f, 0.88f);
-        txtTitulo.raycastTarget = false;
-        EfectoElectrico efTitulo = AsegurarEfecto(titulo, 10f, 4f);
-        efTitulo.continuo = true;
-        efTitulo.temblor = 5f;
+        // Franjas de interferencia
+        GameObject goFranjas = NuevoUI("Interferencia", panel.transform);
+        Estirar((RectTransform)goFranjas.transform, 0f);
+        Image[] franjas = new Image[6];
+        for (int i = 0; i < franjas.Length; i++)
+        {
+            GameObject f = NuevoUI("Franja_" + (i + 1), goFranjas.transform);
+            franjas[i] = f.AddComponent<Image>();
+            franjas[i].raycastTarget = false;
+            f.SetActive(false);
+        }
 
-        // Botones uno al lado del otro
-        GameObject fila = NuevoUI("Botones", panel.transform);
-        RectTransform rtFila = (RectTransform)fila.transform;
-        rtFila.anchorMin = rtFila.anchorMax = rtFila.pivot = new Vector2(0.5f, 0.5f);
-        rtFila.anchoredPosition = new Vector2(0f, -90f);
-        rtFila.sizeDelta = new Vector2(760f, 110f);
+        // 2. Cortinas negras + línea del apagado
+        RectTransform cortinaAbajo = Negro("CortinaAbajo", panel.transform);
+        RectTransform cortinaArriba = Negro("CortinaArriba", panel.transform);
+
+        GameObject goLinea = NuevoUI("LineaApagado", panel.transform);
+        Image linea = goLinea.AddComponent<Image>();
+        linea.color = new Color(0.85f, 0.97f, 1f, 1f);
+        linea.raycastTarget = false;
+        goLinea.SetActive(false);
+
+        // 4. Contenido final
+        GameObject goContenido = NuevoUI("RobotApagado", panel.transform);
+        Estirar((RectTransform)goContenido.transform, 0f);
+        CanvasGroup contenido = goContenido.AddComponent<CanvasGroup>();
+        contenido.alpha = 0f;
+
+        GameObject carita = NuevoUI("CaritaApagada", goContenido.transform);
+        RectTransform rtCarita = (RectTransform)carita.transform;
+        rtCarita.anchorMin = rtCarita.anchorMax = rtCarita.pivot = new Vector2(0.5f, 0.5f);
+        rtCarita.anchoredPosition = new Vector2(0f, 200f);
+        rtCarita.sizeDelta = new Vector2(220f, 220f);
+        Capa("Marco", carita.transform, marco);
+        Image pantallaApagada = Capa("Pantalla", carita.transform, pantalla);
+        Capa("OjosX", carita.transform, ojosX);
+
+        GameObject goTitulo = NuevoUI("Titulo", goContenido.transform);
+        Centro((RectTransform)goTitulo.transform, new Vector2(0f, 20f), new Vector2(1300f, 120f));
+        TextMeshProUGUI titulo = Texto(goTitulo, "BATERÍA AGOTADA", 92, TextAlignmentOptions.Center, ColorTextoRobot);
+        titulo.characterSpacing = 6f;
+
+        GameObject goSub = NuevoUI("Subtitulo", goContenido.transform);
+        Centro((RectTransform)goSub.transform, new Vector2(0f, -55f), new Vector2(1300f, 60f));
+        TextMeshProUGUI sub = Texto(goSub, "El robot se apagó...", 38, TextAlignmentOptions.Center, new Color(0.55f, 0.62f, 0.64f));
+        sub.fontStyle = FontStyles.Italic;
+
+        GameObject fila = NuevoUI("Botones", goContenido.transform);
+        Centro((RectTransform)fila.transform, new Vector2(0f, -180f), new Vector2(760f, 110f));
         HorizontalLayoutGroup hl = fila.AddComponent<HorizontalLayoutGroup>();
         hl.spacing = 40f;
         hl.childAlignment = TextAnchor.MiddleCenter;
         hl.childControlWidth = hl.childControlHeight = false;
         hl.childForceExpandWidth = hl.childForceExpandHeight = false;
 
-        Button reintentar = CrearBoton("Reintentar", fila.transform, boton, ColorVerde, new Color(0.06f, 0.18f, 0.2f));
-        Button salir = CrearBoton("Salir", fila.transform, boton, ColorRojo, Color.white);
+        Button reintentar = CrearBoton("Reintentar", fila.transform, boton, new Color(0.20f, 0.56f, 0.62f), Color.white);
+        Button salir = CrearBoton("Menú", fila.transform, boton, new Color(0.26f, 0.29f, 0.31f), Color.white);   // vuelve al menú de inicio
+
+        goContenido.SetActive(false);
 
         PantallaMuerte pm = panel.AddComponent<PantallaMuerte>();
         pm.jugador = jugador;
         pm.botonReintentar = reintentar;
         pm.botonSalir = salir;
-        pm.vineta = imgVineta;
-        pm.efectosAlAparecer = new[] { efTitulo };
+        pm.estatica = estatica;
+        pm.franjasGlitch = franjas;
+        pm.cortinaArriba = cortinaArriba;
+        pm.cortinaAbajo = cortinaAbajo;
+        pm.lineaApagado = (RectTransform)goLinea.transform;
+        pm.contenido = contenido;
+        pm.pantallaCarita = pantallaApagada;
+        pm.titulo = titulo;
+        pm.audioSource = audio;
+        pantallaApagada.color = pm.colorPantallaApagada;
+    }
+
+    static RectTransform Negro(string nombre, Transform padre)
+    {
+        GameObject go = NuevoUI(nombre, padre);
+        RectTransform rt = (RectTransform)go.transform;
+        rt.anchorMin = rt.anchorMax = Vector2.zero;
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        Image img = go.AddComponent<Image>();
+        img.color = Color.black;
+        img.raycastTarget = false;
+        go.SetActive(false);
+        return rt;
     }
 
     static Button CrearBoton(string texto, Transform padre, Sprite sprite, Color color, Color colorTexto)
@@ -348,13 +392,7 @@ public static class ArmarHUD
 
         GameObject t = NuevoUI("Texto", go.transform);
         Estirar((RectTransform)t.transform, 0f);
-        TextMeshProUGUI tmp = t.AddComponent<TextMeshProUGUI>();
-        tmp.text = texto.ToUpper();
-        tmp.fontSize = 46;
-        tmp.fontStyle = FontStyles.Bold;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = colorTexto;
-        tmp.raycastTarget = false;
+        Texto(t, texto.ToUpper(), 46, TextAlignmentOptions.Center, colorTexto);
 
         return btn;
     }
@@ -381,7 +419,7 @@ public static class ArmarHUD
             rayo = r.AddComponent<RayoUI>();
         }
 
-        // Que el layout de las caritas no lo acomode como si fuera otra carita.
+        // Que los layouts no lo acomoden como si fuera un elemento más.
         LayoutElement le = rayo.GetComponent<LayoutElement>();
         if (le == null) le = Undo.AddComponent<LayoutElement>(rayo.gameObject);
         le.ignoreLayout = true;
@@ -403,6 +441,37 @@ public static class ArmarHUD
     }
 
     // ---------- Utilidades ----------
+
+    static Image Capa(string nombre, Transform padre, Sprite sprite)
+    {
+        GameObject go = NuevoUI(nombre, padre);
+        Estirar((RectTransform)go.transform, 0f);
+
+        Image img = go.AddComponent<Image>();
+        img.sprite = sprite;
+        img.preserveAspect = true;
+        img.raycastTarget = false;
+        return img;
+    }
+
+    static TextMeshProUGUI Texto(GameObject go, string texto, float tam, TextAlignmentOptions alineacion, Color color)
+    {
+        TextMeshProUGUI tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = texto;
+        tmp.fontSize = tam;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.alignment = alineacion;
+        tmp.color = color;
+        tmp.raycastTarget = false;
+        return tmp;
+    }
+
+    static void Centro(RectTransform rt, Vector2 pos, Vector2 tam)
+    {
+        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = pos;
+        rt.sizeDelta = tam;
+    }
 
     static void Borrar(Transform padre, string nombre)
     {

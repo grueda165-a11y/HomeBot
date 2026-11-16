@@ -12,6 +12,8 @@ public class EfectoElectrico : MonoBehaviour
     public float temblor = 6f;
     [Tooltip("Cada cuánto cambian de forma los rayos (segundos).")]
     public float intervaloRayos = 0.045f;
+    [Tooltip("0 = sin parpadeo, 1 = parpadeo fuerte.")]
+    [Range(0f, 1f)] public float parpadeo = 1f;
 
     [Header("Chispas automáticas")]
     public bool continuo = false;
@@ -84,7 +86,7 @@ public class EfectoElectrico : MonoBehaviour
 
         // Parpadeo
         if (grupo != null)
-            grupo.alpha = Random.value < 0.25f ? Random.Range(0.35f, 0.7f) : 1f;
+            grupo.alpha = Random.value < 0.25f ? 1f - Random.Range(0.3f, 0.65f) * parpadeo : 1f;
 
         // Rayos
         if (rayos != null && ahora >= proximoCambio)
