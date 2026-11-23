@@ -12,6 +12,7 @@ public static class ConfigurarCamaraPTZ
     [MenuItem("HomeBot/Cámara PTZ/Configurar")]
     public static void Configurar()
     {
+        if (!HerramientasHomeBot.FueraDePlay("Cámara PTZ")) return;
         Camera cam = Camera.main;
         if (cam == null) cam = Object.FindFirstObjectByType<Camera>();
         if (cam == null)
@@ -84,6 +85,7 @@ public static class ConfigurarCamaraPTZ
     [MenuItem("HomeBot/Cámara PTZ/Agregar punto donde estoy mirando")]
     public static void AgregarPuntoDesdeVista()
     {
+        if (!HerramientasHomeBot.FueraDePlay("Cámara PTZ")) return;
         SceneView vista = SceneView.lastActiveSceneView;
         if (vista == null || vista.camera == null)
         {

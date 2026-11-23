@@ -13,24 +13,31 @@ public static class CrearMenuInicio
 {
     const string RutaEscena = "Assets/Scenes/MenuInicio.unity";
     const string RutaJuego = "Assets/HomeBotEntrega.unity";
-    const string Sprites = "Assets/UI/Sprites/Menu/";
+    internal const string Sprites = "Assets/UI/Sprites/Menu/";
 
     // Medidas en píxeles de las imágenes recortadas (origen arriba a la izquierda)
     static readonly Vector2 TamFondo = new Vector2(1456f, 736f);
-    static readonly Rect PxJugar = new Rect(620f, 310f, 250f, 68f);
-    static readonly Rect PxAjustes = new Rect(625f, 386f, 242f, 63f);
-    static readonly Rect PxSalir = new Rect(625f, 457f, 241f, 63f);
 
-    static readonly Vector2 TamPanel = new Vector2(491f, 410f);
-    static readonly Rect PxVolumen = new Rect(168f, 192f, 244f, 38f);
-    static readonly Rect PxEfectos = new Rect(168f, 262f, 244f, 38f);
-    static readonly Rect PxVolver = new Rect(158f, 313f, 202f, 62f);
+    // Columna centrada del menú principal: tamaños en píxeles de la imagen original.
+    // Se muestran a la misma escala que el fondo (1080 / 736) para que se vean igual que en la imagen.
+    static readonly Vector2 PxLogo = new Vector2(528f, 208f);
+    static readonly Vector2 PxPila = new Vector2(215f, 80f);
+    static readonly Vector2 PxJugar = new Vector2(250f, 68f);
+    static readonly Vector2 PxAjustes = new Vector2(242f, 63f);
+    static readonly Vector2 PxSalir = new Vector2(241f, 63f);
+    const float EspacioColumna = 10f;
 
-    const float AltoPanel = 700f;   // en la resolución de referencia 1920x1080
+    internal static readonly Vector2 TamPanel = new Vector2(491f, 410f);
+    internal static readonly Rect PxVolumen = new Rect(168f, 192f, 244f, 38f);
+    internal static readonly Rect PxEfectos = new Rect(168f, 262f, 244f, 38f);
+    internal static readonly Rect PxVolver = new Rect(158f, 313f, 202f, 62f);
+
+    internal const float AltoPanel = 700f;   // en la resolución de referencia 1920x1080
 
     [MenuItem("HomeBot/Crear escena del menú de inicio")]
     public static void Crear()
     {
+        if (!HerramientasHomeBot.FueraDePlay("Menú de inicio")) return;
         if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
 
         if (File.Exists(RutaEscena) &&
@@ -38,6 +45,9 @@ public static class CrearMenuInicio
             return;
 
         Sprite fondo = Cargar("Menu_Fondo.png");
+        Sprite logo = Cargar("Menu_Logo.png");
+        Sprite pila = Cargar("Menu_Pila.png");
+        Sprite ojo = Cargar("Menu_OjoRobot.png");
         Sprite bJugar = Cargar("Menu_BotonJugar.png");
         Sprite bAjustes = Cargar("Menu_BotonAjustes.png");
         Sprite bSalir = Cargar("Menu_BotonSalir.png");
@@ -46,8 +56,8 @@ public static class CrearMenuInicio
         Sprite riel = Cargar("Slider_Riel.png", new Vector4(22, 22, 22, 22));
         Sprite carga = Cargar("Slider_Carga.png");
         Sprite perilla = Cargar("Slider_Perilla.png");
-        if (fondo == null || bJugar == null || bAjustes == null || bSalir == null || panel == null ||
-            bVolver == null || riel == null || carga == null || perilla == null)
+        if (fondo == null || logo == null || pila == null || bJugar == null || bAjustes == null || bSalir == null || panel == null ||
+            bVolver == null || riel == null || carga == null || perilla == null || ojo == null)
         {
             EditorUtility.DisplayDialog("Menú de inicio", "Faltan imágenes en " + Sprites, "OK");
             return;
@@ -82,13 +92,28 @@ public static class CrearMenuInicio
         arf.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;   // cubre toda la pantalla
         arf.aspectRatio = TamFondo.x / TamFondo.y;
 
-        GameObject principalGO = NuevoUI("Principal", imgFondo.transform);
-        Estirar((RectTransform)principalGO.transform);
-        CanvasGroup principal = principalGO.AddComponent<CanvasGroup>();
+        CrearOjosRobot(imgFondo.rectTransform, ojo);
 
-        Button jugar = CrearBoton("BotonJugar", principalGO.transform, bJugar, PxJugar, TamFondo);
-        Button ajustesBtn = CrearBoton("BotonAjustes", principalGO.transform, bAjustes, PxAjustes, TamFondo);
-        Button salir = CrearBoton("BotonSalir", principalGO.transform, bSalir, PxSalir, TamFondo);
+        // Título, pila y botones: columna centrada en la pantalla, independiente del fondo.
+        // Para moverla o cambiar el espacio, ajusta "Principal" (Pos Y) o su Vertical Layout Group (Spacing).
+        float k = 1080f / TamFondo.y;
+        GameObject principalGO = NuevoUI("Principal", canvas);
+        RectTransform rtPrincipal = (RectTransform)principalGO.transform;
+        rtPrincipal.anchorMin = rtPrincipal.anchorMax = rtPrincipal.pivot = new Vector2(0.5f, 0.5f);
+        rtPrincipal.anchoredPosition = Vector2.zero;
+        rtPrincipal.sizeDelta = new Vector2(PxLogo.x * k, 1000f);
+        CanvasGroup principal = principalGO.AddComponent<CanvasGroup>();
+        VerticalLayoutGroup columna = principalGO.AddComponent<VerticalLayoutGroup>();
+        columna.childAlignment = TextAnchor.MiddleCenter;
+        columna.spacing = EspacioColumna;
+        columna.childControlWidth = columna.childControlHeight = true;
+        columna.childForceExpandWidth = columna.childForceExpandHeight = false;
+
+        Pieza("Titulo", principalGO.transform, logo, PxLogo * k);
+        Pieza("Pila", principalGO.transform, pila, PxPila * k);
+        Button jugar = CrearBotonColumna("BotonJugar", principalGO.transform, bJugar, PxJugar * k);
+        Button ajustesBtn = CrearBotonColumna("BotonAjustes", principalGO.transform, bAjustes, PxAjustes * k);
+        Button salir = CrearBotonColumna("BotonSalir", principalGO.transform, bSalir, PxSalir * k);
 
         // ---------- Ajustes ----------
         GameObject ajustesGO = NuevoUI("Ajustes", canvas);
@@ -142,9 +167,70 @@ public static class CrearMenuInicio
         Debug.Log("Menú de inicio creado en " + RutaEscena + " y puesto como primera escena del juego.");
     }
 
+    // ---------- Ojos del robot (siguen al mouse) ----------
+
+    // Medidas en la imagen original: punto entre los dos ojos, caja de la cara y giro de la cabeza
+    static readonly Vector2 PxCentroOjos = new Vector2(1245.25f, 216.25f);
+    static readonly Vector2 PxCajaOjos = new Vector2(70f, 40f);
+    const float SeparacionOjos = 19.5f;   // de cada ojo al centro
+    const float TamOjo = 42f;             // ojo con su brillo
+    const float GiroCabeza = 15.6f;       // grados
+
+    static void CrearOjosRobot(RectTransform fondo, Sprite ojo)
+    {
+        GameObject go = NuevoUI("OjosRobot", fondo);
+        RectTransform rt = (RectTransform)go.transform;
+        Vector2 c = PxCentroOjos, m = PxCajaOjos * 0.5f;
+        rt.anchorMin = new Vector2((c.x - m.x) / TamFondo.x, 1f - (c.y + m.y) / TamFondo.y);
+        rt.anchorMax = new Vector2((c.x + m.x) / TamFondo.x, 1f - (c.y - m.y) / TamFondo.y);
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.localRotation = Quaternion.Euler(0f, 0f, GiroCabeza);
+
+        RectTransform[] ojos = new RectTransform[2];
+        float[] lados = { -SeparacionOjos, SeparacionOjos };
+        for (int i = 0; i < 2; i++)
+        {
+            Image img = NuevaImagen(i == 0 ? "OjoIzquierdo" : "OjoDerecho", rt, ojo);
+            img.raycastTarget = false;
+            RectTransform o = img.rectTransform;
+            float cx = 0.5f + lados[i] / PxCajaOjos.x;
+            float mx = TamOjo * 0.5f / PxCajaOjos.x, my = TamOjo * 0.5f / PxCajaOjos.y;
+            o.anchorMin = new Vector2(cx - mx, 0.5f - my);
+            o.anchorMax = new Vector2(cx + mx, 0.5f + my);
+            o.offsetMin = o.offsetMax = Vector2.zero;
+            ojos[i] = o;
+        }
+
+        go.AddComponent<OjosRobot>().ojos = ojos;
+    }
+
     // ---------- Piezas ----------
 
-    static Button CrearBoton(string nombre, Transform padre, Sprite sprite, Rect px, Vector2 tam)
+    static Image Pieza(string nombre, Transform padre, Sprite sprite, Vector2 tam)
+    {
+        Image img = NuevaImagen(nombre, padre, sprite);
+        img.preserveAspect = true;
+        img.raycastTarget = false;
+        LayoutElement le = img.gameObject.AddComponent<LayoutElement>();
+        le.preferredWidth = tam.x;
+        le.preferredHeight = tam.y;
+        return img;
+    }
+
+    static Button CrearBotonColumna(string nombre, Transform padre, Sprite sprite, Vector2 tam)
+    {
+        Image img = Pieza(nombre, padre, sprite, tam);
+        img.raycastTarget = true;
+
+        Button b = img.gameObject.AddComponent<Button>();
+        b.targetGraphic = img;
+        b.transition = Selectable.Transition.None;   // la animación la hace BotonMenu
+        img.gameObject.AddComponent<BotonMenu>();
+        return b;
+    }
+
+    internal static Button CrearBoton(string nombre, Transform padre, Sprite sprite, Rect px, Vector2 tam)
     {
         Image img = NuevaImagen(nombre, padre, sprite);
         AnclarPx(img.rectTransform, px, tam);
@@ -156,7 +242,7 @@ public static class CrearMenuInicio
         return b;
     }
 
-    static Slider CrearSlider(string nombre, RectTransform panel, Rect px, Sprite riel, Sprite carga, Sprite perilla)
+    internal static Slider CrearSlider(string nombre, RectTransform panel, Rect px, Sprite riel, Sprite carga, Sprite perilla)
     {
         GameObject go = NuevoUI(nombre, panel);
         RectTransform rt = (RectTransform)go.transform;
@@ -204,7 +290,11 @@ public static class CrearMenuInicio
 
     static Sprite Cargar(string archivo, Vector4 borde = default)
     {
-        string ruta = Sprites + archivo;
+        return CargarRuta(Sprites + archivo, borde);
+    }
+
+    internal static Sprite CargarRuta(string ruta, Vector4 borde = default)
+    {
         TextureImporter imp = AssetImporter.GetAtPath(ruta) as TextureImporter;
         if (imp == null)
         {
@@ -245,7 +335,7 @@ public static class CrearMenuInicio
     }
 
     // Coloca un RectTransform usando píxeles de la imagen (origen arriba-izquierda) como anclas.
-    static void AnclarPx(RectTransform rt, Rect px, Vector2 tam)
+    internal static void AnclarPx(RectTransform rt, Rect px, Vector2 tam)
     {
         rt.anchorMin = new Vector2(px.xMin / tam.x, 1f - px.yMax / tam.y);
         rt.anchorMax = new Vector2(px.xMax / tam.x, 1f - px.yMin / tam.y);
@@ -253,7 +343,7 @@ public static class CrearMenuInicio
         rt.pivot = new Vector2(0.5f, 0.5f);
     }
 
-    static void Estirar(RectTransform rt, float margenX = 0f, float margenY = 0f)
+    internal static void Estirar(RectTransform rt, float margenX = 0f, float margenY = 0f)
     {
         rt.anchorMin = Vector2.zero;
         rt.anchorMax = Vector2.one;
@@ -262,7 +352,7 @@ public static class CrearMenuInicio
         rt.offsetMax = new Vector2(-margenX, -margenY);
     }
 
-    static Image NuevaImagen(string nombre, Transform padre, Sprite sprite)
+    internal static Image NuevaImagen(string nombre, Transform padre, Sprite sprite)
     {
         GameObject go = NuevoUI(nombre, padre);
         Image img = go.AddComponent<Image>();
@@ -270,7 +360,7 @@ public static class CrearMenuInicio
         return img;
     }
 
-    static GameObject NuevoUI(string nombre, Transform padre)
+    internal static GameObject NuevoUI(string nombre, Transform padre)
     {
         GameObject go = new GameObject(nombre, typeof(RectTransform));
         go.layer = LayerMask.NameToLayer("UI");
