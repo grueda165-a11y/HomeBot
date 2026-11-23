@@ -20,5 +20,6 @@ public static class HerramientasHomeBot
     [MenuItem("HomeBot/Armar menú de pausa", true)]
     [MenuItem("HomeBot/Cámara PTZ/Configurar", true)]
     [MenuItem("HomeBot/Cámara PTZ/Agregar punto donde estoy mirando", true)]
+    [MenuItem("HomeBot/Arreglar materiales rosados", true)]
     static bool SoloFueraDePlay() => !EditorApplication.isPlaying;
 }

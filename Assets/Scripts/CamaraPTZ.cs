@@ -35,6 +35,25 @@ public class CamaraPTZ : MonoBehaviour
     [Tooltip("Distancia que la cámara deja entre ella y cualquier pared o mueble con collider.")]
     public float separacionParedes = 0.5f;
 
+    [Header("Zonas: una cámara de vigilancia por zona")]
+    [Tooltip("Cada zona tiene su propia cámara fija. Al pasar a otra zona se apaga la anterior y se prende la nueva.")]
+    public bool usarZonas = true;
+    [Tooltip("Una cámara de verdad por zona (se ven en la Hierarchy al dar Play). Apagado: una sola cámara que salta de zona.")]
+    public bool unaCamaraPorZona = true;
+    [Tooltip("Nombres de los objetos del modelo de la casa que son cada zona.")]
+    public string[] zonas = { "room_sister", "hallway", "room_brothers" };
+    [Tooltip("Nombre que se muestra al cambiar de cámara (mismo orden que las zonas).")]
+    public string[] nombresZonas = { "CUARTO DE LA HERMANA", "PASILLO", "CUARTO DEL DUEÑO" };
+    [Tooltip("Apagado: en cada zona la cámara se acomoda siguiendo al robot (la de siempre), sin salir de la zona.\n" +
+             "Encendido: cámara quieta en el centro de cada zona.")]
+    public bool camaraFijaEnZona = false;
+    [Tooltip("Solo con cámara fija: a qué altura de la zona va (0 = piso, 1 = techo).")]
+    [Range(0.2f, 0.95f)] public float alturaEnZona = 0.7f;
+    [Tooltip("Zoom mínimo en las zonas (más bajo = puede acercarse más al robot desde lejos).")]
+    public float fovMinimoZona = 15f;
+    [Tooltip("Estática y cartel 'CAM' al cambiar de cámara.")]
+    public bool efectoCambio = true;
+
     [Header("Puntos puestos a mano (opcional)")]
     [Tooltip("Actívalo para usar los puntos de PuntosCamaraPTZ en vez del sitio automático.")]
     public bool usarPuntosManuales = false;
@@ -71,6 +90,15 @@ public class CamaraPTZ : MonoBehaviour
     private float proximaMedicion;
     private bool tieneDestino;
     private float yaw, pitch, velYaw, velPitch, velFov;
+
+    private readonly System.Collections.Generic.List<ZonaCamara> listaZonas = new System.Collections.Generic.List<ZonaCamara>();
+    private ZonaCamara zonaActual;
+
+    // Si esta cámara pertenece a una zona (modo "una cámara por zona"), aquí está su zona
+    [HideInInspector] public ZonaCamara zonaPropia;
+    private bool iniciado;
+    private float proximaZona;
+    private EfectoCambioCamara efecto;
 
     // ---------- Activación automática al dar Play (en escenas de juego) ----------
 
@@ -125,24 +153,116 @@ public class CamaraPTZ : MonoBehaviour
 
     void Start()
     {
+        Iniciar();
+    }
+
+    void Iniciar()
+    {
+        if (iniciado) return;
         if (jugador == null)
         {
             GameObject p = GameObject.FindGameObjectWithTag("Player");
             if (p != null) jugador = p.transform;
         }
         if (jugador == null) return;
+        iniciado = true;
 
         // La cámara ya no cuelga de otro objeto que la mueva
         transform.SetParent(null, true);
 
         posicionAnteriorJugador = jugador.position;
         miradaSuave = jugador.position + alturaMirada;
-        CalcularDestino(true);
-        Cortar();
-        AlinearControles();
 
         DesvanecerParedes d = GetComponent<DesvanecerParedes>();
         if (d != null) d.jugador = jugador;
+
+        // Cámara de una zona (creada por la central): solo trabaja en su zona
+        if (zonaPropia != null)
+        {
+            zonaActual = zonaPropia;
+            CalcularDestino(true);
+            Cortar();
+            return;
+        }
+
+        if (usarZonas) BuscarZonas();
+        if (efectoCambio) efecto = EfectoCambioCamara.Crear();
+
+        // Una cámara de verdad por zona: esta queda como la de la primera zona y se crean las demás
+        if (usarZonas && unaCamaraPorZona && listaZonas.Count > 1)
+        {
+            CrearCamarasPorZona();
+            return;
+        }
+
+        zonaActual = ZonaDelJugador();
+        if (zonaActual != null && efecto != null) efecto.Mostrar(zonaActual.numero, zonaActual.etiqueta);
+
+        CalcularDestino(true);
+        Cortar();
+        AlinearControles();
+    }
+
+    // ---------- Una cámara por zona ----------
+
+    void CrearCamarasPorZona()
+    {
+        var camaras = new System.Collections.Generic.List<CamaraPTZ>();
+
+        zonaPropia = listaZonas[0];
+        zonaActual = zonaPropia;
+        name = "Camara 1 · " + listaZonas[0].etiqueta;
+        camaras.Add(this);
+
+        for (int i = 1; i < listaZonas.Count; i++)
+        {
+            GameObject copia = Instantiate(gameObject);
+            copia.name = "Camara " + listaZonas[i].numero + " · " + listaZonas[i].etiqueta;
+            CamaraPTZ c = copia.GetComponent<CamaraPTZ>();
+            c.jugador = jugador;
+            c.zonaPropia = listaZonas[i];
+            c.referenciaControles = referenciaControles;
+            camaras.Add(c);
+        }
+
+        foreach (CamaraPTZ c in camaras) c.Apagar();
+
+        CentralCamaras central = new GameObject("CentralCamaras").AddComponent<CentralCamaras>();
+        central.Configurar(jugador, listaZonas, camaras, efecto);
+    }
+
+    // La central prende la cámara de la zona donde está el robot
+    public void Prender()
+    {
+        enabled = true;
+        if (cam == null) cam = GetComponent<Camera>();
+        cam.enabled = true;
+        gameObject.tag = "MainCamera";
+        AudioListener oido = GetComponent<AudioListener>();
+        if (oido != null) oido.enabled = true;
+        DesvanecerParedes d = GetComponent<DesvanecerParedes>();
+        if (d != null) d.enabled = true;
+
+        Iniciar();
+        if (jugador == null) return;
+        posicionAnteriorJugador = jugador.position;
+        velocidadJugador = Vector3.zero;
+        CalcularDestino(true);
+        Cortar();
+        AlinearControles();
+    }
+
+    // ...y apaga las demás
+    public void Apagar()
+    {
+        if (cam == null) cam = GetComponent<Camera>();
+        cam.enabled = false;
+        if (gameObject.CompareTag("MainCamera")) gameObject.tag = "Untagged";
+        AudioListener oido = GetComponent<AudioListener>();
+        if (oido != null) oido.enabled = false;
+        DesvanecerParedes d = GetComponent<DesvanecerParedes>();
+        if (d != null) d.enabled = false;   // devuelve las paredes a la normalidad
+        enabled = false;
     }
 
     void LateUpdate()
@@ -156,6 +276,23 @@ public class CamaraPTZ : MonoBehaviour
         bool teletransporte = delta.sqrMagnitude > 25f;
         velocidadJugador = teletransporte ? Vector3.zero : Vector3.Lerp(velocidadJugador, delta / dt, 1f - Mathf.Exp(-3f * dt));
         posicionAnteriorJugador = jugador.position;
+
+        // ---- ¿Cambió de zona? Se apaga la cámara anterior y se prende la de la nueva zona ----
+        // (solo en modo de una sola cámara; con una cámara por zona lo hace CentralCamaras)
+        if (zonaPropia == null && listaZonas.Count > 0 && (teletransporte || Time.time >= proximaZona))
+        {
+            proximaZona = Time.time + 0.2f;
+            ZonaCamara nueva = ZonaDelJugador();
+            if (nueva != null && nueva != zonaActual)
+            {
+                zonaActual = nueva;
+                CalcularDestino(true);
+                Cortar();
+                AlinearControles();
+                if (efecto != null) efecto.Mostrar(zonaActual.numero, zonaActual.etiqueta);
+                return;
+            }
+        }
 
         // ---- ¿Dónde va la cámara? ----
         if (teletransporte || Time.time >= proximaMedicion)
@@ -206,17 +343,95 @@ public class CamaraPTZ : MonoBehaviour
     float FovPara(float distancia)
     {
         distancia = Mathf.Max(0.5f, distancia);
+        float minimo = zonaActual != null && camaraFijaEnZona ? Mathf.Min(fovMinimoZona, fovMinimoVigilancia) : fovMinimoVigilancia;
         return Mathf.Clamp(2f * Mathf.Atan(encuadreVigilancia * 0.5f / distancia) * Mathf.Rad2Deg,
-                           fovMinimoVigilancia, fovMaximoVigilancia);
+                           minimo, fovMaximoVigilancia);
+    }
+
+    // ---------- Zonas ----------
+
+    void BuscarZonas()
+    {
+        listaZonas.Clear();
+        Scene escena = gameObject.scene;
+        for (int i = 0; i < zonas.Length; i++)
+        {
+            Transform t = BuscarEnEscena(escena, zonas[i]);
+            if (t == null) continue;
+
+            Renderer[] rs = t.GetComponentsInChildren<Renderer>();
+            if (rs.Length == 0) continue;
+            Bounds b = rs[0].bounds;
+            foreach (Renderer r in rs) b.Encapsulate(r.bounds);
+
+            // Cámara fija arriba, en el centro de la zona y debajo del techo
+            float y = Mathf.Min(b.min.y + b.size.y * alturaEnZona, b.max.y - margenTecho - 0.5f);
+            listaZonas.Add(new ZonaCamara
+            {
+                etiqueta = i < nombresZonas.Length ? nombresZonas[i] : zonas[i],
+                numero = listaZonas.Count + 1,
+                limites = b,
+                montaje = new Vector3(b.center.x, y, b.center.z),
+            });
+        }
+        if (listaZonas.Count == 0 && usarZonas)
+            Debug.Log("Cámara PTZ: no encontré las zonas (" + string.Join(", ", zonas) + "); uso la cámara automática.");
+    }
+
+    static Transform BuscarEnEscena(Scene escena, string nombre)
+    {
+        foreach (GameObject raiz in escena.GetRootGameObjects())
+            foreach (Transform t in raiz.GetComponentsInChildren<Transform>(true))
+                if (t.name == nombre) return t;
+        return null;
+    }
+
+    // Mantiene la cámara dentro de los límites de su zona (con un pequeño margen),
+    // y vuelve a comprobar que no quede detrás de una pared.
+    Vector3 DentroDeLaZona(Vector3 sitio, ZonaCamara zona)
+    {
+        Bounds b = zona.limites;
+        float m = 1f;
+        Vector3 dentro = new Vector3(
+            Mathf.Clamp(sitio.x, b.min.x + m, b.max.x - m),
+            Mathf.Clamp(sitio.y, b.min.y + m, b.max.y - margenTecho - m),
+            Mathf.Clamp(sitio.z, b.min.z + m, b.max.z - m));
+        if (dentro == sitio) return sitio;
+        return SinAtravesarParedes(jugador.position + Vector3.up * 1f, dentro);
+    }
+
+    // La zona donde está el robot. Si está en el borde entre dos, se queda con la actual.
+    ZonaCamara ZonaDelJugador() => ZonaQueContiene(listaZonas, zonaActual, jugador.position);
+
+    public static ZonaCamara ZonaQueContiene(System.Collections.Generic.List<ZonaCamara> zonas, ZonaCamara actual, Vector3 posicion)
+    {
+        Vector3 p = posicion + Vector3.up * 0.5f;
+        if (actual != null && actual.limites.Contains(p)) return actual;
+
+        ZonaCamara mejor = null;
+        float menorVolumen = float.MaxValue;
+        foreach (ZonaCamara z in zonas)
+        {
+            if (!z.limites.Contains(p)) continue;
+            float v = z.limites.size.x * z.limites.size.y * z.limites.size.z;
+            if (v < menorVolumen) { menorVolumen = v; mejor = z; }
+        }
+        return mejor ?? actual;
     }
 
     // ---------- Posición ----------
 
     void CalcularDestino(bool forzar)
     {
-        Vector3 nuevo = usarPuntosManuales && contenedorPuntos != null && contenedorPuntos.childCount > 0
-            ? PuntoManualMasCercano()
-            : SitioVigilancia();
+        Vector3 nuevo;
+        if (usarPuntosManuales && contenedorPuntos != null && contenedorPuntos.childCount > 0)
+            nuevo = PuntoManualMasCercano();
+        else if (zonaActual != null && camaraFijaEnZona)
+            nuevo = zonaActual.montaje;                                  // cámara quieta de la zona
+        else if (zonaActual != null)
+            nuevo = DentroDeLaZona(SitioVigilancia(), zonaActual);      // la de siempre, sin salir de su zona
+        else
+            nuevo = SitioVigilancia();
 
         if (forzar || !tieneDestino || Vector3.Distance(nuevo, destino) > margenRecolocar)
         {
@@ -313,6 +528,67 @@ public class CamaraPTZ : MonoBehaviour
         referenciaControles.rotation = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
     }
 
+#if UNITY_EDITOR
+    // ---------- Ver las zonas y sus cámaras en la vista Scene (sin darle Play) ----------
+    static readonly Color[] coloresZona =
+    {
+        new Color(1f, 0.45f, 0.75f), new Color(0.35f, 0.85f, 1f), new Color(0.5f, 1f, 0.45f), new Color(1f, 0.85f, 0.3f)
+    };
+    static System.Collections.Generic.List<Bounds> cacheLimites;
+    static System.Collections.Generic.List<int> cacheIndices;
+    static double cacheHasta;
+
+    void OnDrawGizmos()
+    {
+        if (Application.isPlaying || !usarZonas || zonas == null) return;
+
+        // Se recalculan cada pocos segundos (el modelo de la casa tiene muchas piezas)
+        if (cacheLimites == null || UnityEditor.EditorApplication.timeSinceStartup > cacheHasta)
+        {
+            cacheLimites = new System.Collections.Generic.List<Bounds>();
+            cacheIndices = new System.Collections.Generic.List<int>();
+            for (int i = 0; i < zonas.Length; i++)
+            {
+                Transform t = BuscarEnEscena(gameObject.scene, zonas[i]);
+                if (t == null) continue;
+                Renderer[] rs = t.GetComponentsInChildren<Renderer>();
+                if (rs.Length == 0) continue;
+                Bounds b = rs[0].bounds;
+                foreach (Renderer r in rs) b.Encapsulate(r.bounds);
+                cacheLimites.Add(b);
+                cacheIndices.Add(i);
+            }
+            cacheHasta = UnityEditor.EditorApplication.timeSinceStartup + 3.0;
+        }
+
+        var estilo = new GUIStyle(UnityEditor.EditorStyles.boldLabel) { fontSize = 14 };
+        for (int n = 0; n < cacheLimites.Count; n++)
+        {
+            Bounds b = cacheLimites[n];
+            int i = cacheIndices[n];
+            Color c = coloresZona[n % coloresZona.Length];
+
+            // Caja de la zona
+            Gizmos.color = new Color(c.r, c.g, c.b, 0.6f);
+            Gizmos.DrawWireCube(b.center, b.size);
+
+            // Cámara: arriba en la zona, mirando hacia abajo al centro
+            Vector3 pos = new Vector3(b.center.x, Mathf.Min(b.min.y + b.size.y * alturaEnZona, b.max.y - margenTecho - 0.5f), b.center.z);
+            Vector3 hacia = new Vector3(b.center.x, b.min.y, b.center.z) + (new Vector3(b.size.x, 0f, 0f) * 0.15f) - pos;
+            Gizmos.color = c;
+            Gizmos.DrawSphere(pos, Mathf.Max(0.4f, b.size.magnitude * 0.006f));
+            Matrix4x4 antes = Gizmos.matrix;
+            Gizmos.matrix = Matrix4x4.TRS(pos, Quaternion.LookRotation(hacia.normalized, Vector3.up), Vector3.one);
+            Gizmos.DrawFrustum(Vector3.zero, 50f, Mathf.Max(2f, b.size.y * 0.25f), 0.3f, 1.6f);
+            Gizmos.matrix = antes;
+
+            estilo.normal.textColor = c;
+            string nombre = i < nombresZonas.Length ? nombresZonas[i] : zonas[i];
+            UnityEditor.Handles.Label(pos + Vector3.up * Mathf.Max(1f, b.size.y * 0.05f), "CAM " + (n + 1) + " · " + nombre, estilo);
+        }
+    }
+#endif
+
     void OnDrawGizmosSelected()
     {
         if (!Application.isPlaying || jugador == null) return;
@@ -320,4 +596,13 @@ public class CamaraPTZ : MonoBehaviour
         Gizmos.DrawWireSphere(destino, 0.3f);
         Gizmos.DrawLine(destino, jugador.position + alturaMirada);
     }
+}
+
+// Una zona de la casa con su cámara de vigilancia
+public class ZonaCamara
+{
+    public string etiqueta;
+    public int numero;
+    public Bounds limites;
+    public Vector3 montaje;
 }
