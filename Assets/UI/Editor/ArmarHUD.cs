@@ -37,6 +37,7 @@ public static class ArmarHUD
     [MenuItem("HomeBot/Armar HUD")]
     public static void Armar()
     {
+        if (!HerramientasHomeBot.FueraDePlay("Armar HUD")) return;
         Sprite marco = CargarSprite("Carita_Marco.png");
         Sprite pantalla = CargarSprite("Carita_Pantalla.png");
         Sprite cara = CargarSprite("Carita_Cara.png");
@@ -78,6 +79,7 @@ public static class ArmarHUD
         CrearVidas(raiz, jugador, marco, pantalla, cara);
         CrearIntentos(raiz);
         CrearPantallaMuerte(raiz, jugador, marco, pantalla, ojosX, boton);
+        ArmarPausa.Construir(raiz, jugador);   // menú de pausa (Esc)
         AsegurarEventSystem();
 
         Undo.CollapseUndoOperations(grupo);
