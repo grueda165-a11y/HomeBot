@@ -6062,6 +6062,37 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.029999997, y: 0.24999999, z: 0.1999999}
   m_Center: {x: 0, y: -0.00000011920929, z: 0}
+--- !u!1 &62575923
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 62575924}
+  m_Layer: 0
+  m_Name: PuntoCamara_3
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &62575924
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 62575923}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -12.808868, y: 24.051306, z: 35.040054}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 848724379}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &65370724 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1678745798033961922, guid: 733d74b7a251cca4ab94b2e0aa28e5f8, type: 3}
@@ -10523,29 +10554,24 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   jugador: {fileID: 1786091279}
   alturaMirada: {x: 0, y: 1.2, z: 0}
-  anticipacion: 0.25
+  anticipacionMirada: 0.1
+  alturaVigilancia: 7
+  margenTecho: 0.4
+  distanciaMinimaVigilancia: 4
+  distanciaMaximaVigilancia: 10
+  margenRecolocar: 3
+  alcanceMedicion: 25
+  separacionParedes: 0.5
+  usarPuntosManuales: 0
   contenedorPuntos: {fileID: 848724379}
-  puntos: []
-  margenCambio: 1.5
-  comprobarVision: 1
-  capasQueTapan:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  tiempoCambio: 0.6
-  puntosAutomaticos: 1
-  distanciaAuto: 7
-  alturaAuto: 4.5
-  distanciaMaximaAuto: 14
-  tiempoTapadoAuto: 0.4
-  suavidadGiro: 6
-  zonaMuerta: 2
-  tiltMinimo: -80
-  tiltMaximo: 80
+  tiempoDeslizamiento: 1.6
+  tiempoGiro: 0.45
+  giroMaximo: 120
+  tiempoZoom: 0.8
   usarZoom: 1
-  encuadre: 7
-  fovMinimo: 30
-  fovMaximo: 65
-  suavidadZoom: 3
+  encuadreVigilancia: 9
+  fovMinimoVigilancia: 35
+  fovMaximoVigilancia: 70
   referenciaControles: {fileID: 1608142249}
 --- !u!1 &333951385 stripped
 GameObject:
@@ -17399,6 +17425,7 @@ Transform:
   m_Children:
   - {fileID: 239956054}
   - {fileID: 1294674604}
+  - {fileID: 62575924}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &854781390 stripped

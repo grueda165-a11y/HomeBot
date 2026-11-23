@@ -122,7 +122,15 @@ public class MenuInicio : MonoBehaviour
 
         yield return new WaitForSecondsRealtime(0.12f);   // deja sonar el clic
 
-        AsyncOperation carga = SceneManager.LoadSceneAsync(escenaJuego);
+        AsyncOperation carga = null;
+#if UNITY_EDITOR
+        // En el editor: JUGAR abre la escena que estabas editando al darle Play (por ejemplo HomeBotTesting)
+        string editada = UnityEditor.SessionState.GetString("HomeBot_EscenaParaJugar", "");
+        if (!string.IsNullOrEmpty(editada))
+            carga = UnityEditor.SceneManagement.EditorSceneManager.LoadSceneAsyncInPlayMode(
+                editada, new LoadSceneParameters(LoadSceneMode.Single));
+#endif
+        if (carga == null) carga = SceneManager.LoadSceneAsync(escenaJuego);
         if (carga == null)
         {
             Debug.LogError("No se pudo cargar la escena '" + escenaJuego + "'. ¿Está en File > Build Profiles (Scene List)?");

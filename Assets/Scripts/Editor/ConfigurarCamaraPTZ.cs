@@ -66,6 +66,7 @@ public static class ConfigurarCamaraPTZ
         Undo.RecordObject(ptz, "Cámara PTZ");
         ptz.jugador = jugador;
         ptz.contenedorPuntos = puntosGO.transform;
+        ptz.usarPuntosManuales = true;   // quien configura puntos a mano quiere usarlos
         ptz.referenciaControles = refGO.transform;
 
         // 5. El movimiento del jugador usa la referencia estable en vez de la cámara directa
