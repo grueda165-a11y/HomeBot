@@ -9,6 +9,9 @@ public class Movimiento_Player : MonoBehaviour
     public float jumpHeight = 2f;
     public float gravity = -20f;
 
+    [Header("Coyote Time")]
+    public float tiempoCoyote = 0.15f;  // Margen extra para saltar tras caer de un borde
+
     [Header("Rotación del personaje")]
     public Transform modelo;            // arrastra aquí "Personaje" (si lo dejas vacío, gira todo el Player)
     public float velocidadGiro = 12f;
@@ -23,6 +26,7 @@ public class Movimiento_Player : MonoBehaviour
     private Vector3 moveDirection = Vector3.zero;
 
     private float currentSpeed;
+    private float contadorCoyote;
 
     public bool IsMoving { get; private set; }
     public Vector2 CurrentInput { get; private set; }
@@ -46,6 +50,11 @@ public class Movimiento_Player : MonoBehaviour
         if (IsGrounded && Velocity.y < 0f)
         {
             Velocity.y = -2f;
+            contadorCoyote = tiempoCoyote;      // recarga el margen al tocar el suelo
+        }
+        else
+        {
+            contadorCoyote -= Time.deltaTime;   // descuenta mientras está en el aire
         }
 
         HandleMovement();
@@ -97,10 +106,16 @@ public class Movimiento_Player : MonoBehaviour
             }
         }
 
-        if (Input.GetButtonDown("Jump") && IsGrounded)
+        // Animación de caminar
+        SetBoolSeguro("isWalking", IsMoving);
+
+        // Salta en el suelo o durante el Coyote Time
+        if (Input.GetButtonDown("Jump") && contadorCoyote > 0f)
         {
             Velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            contadorCoyote = 0f;                // evita doble salto en el aire
             SetBoolSeguro("isJumping", true);
+            SetTriggerSeguro("salta");          // animación de salto
         }
     }
 
@@ -133,7 +148,7 @@ public class Movimiento_Player : MonoBehaviour
         animator.SetFloat("VerticalSpeed", Velocity.y);
     }
 
-    // Solo cambia el bool si el parámetro existe (evita el aviso de "isJumping does not exist")
+    // Solo cambia el bool si el parámetro existe (evita avisos de "does not exist")
     void SetBoolSeguro(string nombre, bool valor)
     {
         if (animator == null) return;
@@ -143,6 +158,21 @@ public class Movimiento_Player : MonoBehaviour
             if (p.name == nombre)
             {
                 animator.SetBool(nombre, valor);
+                return;
+            }
+        }
+    }
+
+    // Igual que el anterior, pero para triggers
+    void SetTriggerSeguro(string nombre)
+    {
+        if (animator == null) return;
+
+        foreach (AnimatorControllerParameter p in animator.parameters)
+        {
+            if (p.name == nombre)
+            {
+                animator.SetTrigger(nombre);
                 return;
             }
         }
