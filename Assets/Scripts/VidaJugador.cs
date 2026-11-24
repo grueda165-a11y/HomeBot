@@ -1,33 +1,43 @@
+using System.Collections;
 using UnityEngine;
 
 public class VidaJugador : MonoBehaviour
 {
-    [Header("Configuraci髇 de Vida (tiempo)")]
+    [Header("Configuraci贸n de Vida (tiempo)")]
     public float vidaMaxima = 90f;
     public float vidaActual;
     public float perdidaPorSegundo = 1f;
 
-    [Header("Configuraci髇 de Vidas")]
+    [Header("Configuraci贸n de Vidas")]
     public int vidasMaximas = 3;
     public int vidasActuales;
 
     [Header("Intentos")]
-    [Tooltip("Al pasar de este n鷐ero, el contador de intentos vuelve a 1.")]
+    [Tooltip("Al pasar de este n煤mero, el contador de intentos vuelve a 1.")]
     public int intentosMaximos = 3;
 
-    [Header("Aparici髇 inicial")]
+    [Header("Feedback al morir (NUEVO)")]
+    [Tooltip("Segundos que el juego se queda en pausa mostrando la animaci贸n de muerte antes de reaparecer. 0 = sin pausa.")]
+    public float pausaAlMorir = 1.2f;
+
+    [Header("Aparici贸n inicial")]
     public Vector3 coordenadasIniciales = new Vector3(13.27f, 22.71f, -9.2f);
 
     // Avisos para otros objetos
     public static event System.Action JugadorMurio;
     public static event System.Action ReinicioCompleto;
     public static event System.Action SinVidas;          // se perdieron las 3 vidas -> pantalla de muerte
+    public static event System.Action Muriendo;          // NUEVO: empieza la muerte (para la animaci贸n)
+    public static event System.Action RecibioDano;       // NUEVO: da帽o sin morir (para la animaci贸n de descarga)
 
-    // N鷐ero de intento actual (1, 2, 3 y vuelve a 1).
+    // N煤mero de intento actual (1, 2, 3 y vuelve a 1).
     public static int Intentos { get; private set; }
 
     // true mientras se muestra la pantalla de muerte (el juego queda en pausa).
     public bool EnPantallaMuerte { get; private set; }
+
+    // NUEVO: true durante la pausa corta de la muerte (antes de reaparecer).
+    public bool EnSecuenciaMuerte { get; private set; }
 
     private CharacterController _characterController;
     private Rigidbody _rigidbody;
@@ -61,7 +71,7 @@ public class VidaJugador : MonoBehaviour
 
     void Update()
     {
-        if (EnPantallaMuerte) return;
+        if (EnPantallaMuerte || EnSecuenciaMuerte) return;
 
         vidaActual -= perdidaPorSegundo * Time.deltaTime;
 
@@ -73,13 +83,17 @@ public class VidaJugador : MonoBehaviour
 
     public void TomarDano(float cantidadDano)
     {
-        if (EnPantallaMuerte) return;
+        if (EnPantallaMuerte || EnSecuenciaMuerte) return;
 
         vidaActual -= cantidadDano;
 
         if (vidaActual <= 0f)
         {
             Morir();
+        }
+        else
+        {
+            RecibioDano?.Invoke();      // NUEVO
         }
     }
 
@@ -88,7 +102,7 @@ public class VidaJugador : MonoBehaviour
         vidaActual = Mathf.Min(vidaActual + segundos, vidaMaxima);
     }
 
-    // Llena por completo la barra de tiempo (lo usan las bater韆s).
+    // Llena por completo la barra de tiempo (lo usan las bater铆as).
     public void RecargarTiempo()
     {
         vidaActual = vidaMaxima;
@@ -117,6 +131,7 @@ public class VidaJugador : MonoBehaviour
 
             EnPantallaMuerte = true;
             Time.timeScale = 0f;
+            Muriendo?.Invoke();         // NUEVO
             Debug.Log("Sin vidas. Mostrando pantalla de muerte.");
             SinVidas.Invoke();
             return;
@@ -125,15 +140,34 @@ public class VidaJugador : MonoBehaviour
         Intentos = Intentos >= intentosMaximos ? 1 : Intentos + 1;
         Debug.Log("El jugador ha muerto. Vidas restantes: " + vidasActuales);
 
+        StartCoroutine(SecuenciaMuerte());      // NUEVO: pausa corta con animaci贸n y luego reaparece
+    }
+
+    // NUEVO: el juego se detiene un momento (se ve la animaci贸n de muerte) y luego reaparece.
+    IEnumerator SecuenciaMuerte()
+    {
+        EnSecuenciaMuerte = true;
+        Muriendo?.Invoke();
+
+        if (pausaAlMorir > 0f)
+        {
+            Time.timeScale = 0f;
+            yield return new WaitForSecondsRealtime(pausaAlMorir);
+            Time.timeScale = 1f;
+        }
+
         Teletransportar(posicionRespawn);
         vidaActual = vidaMaxima;
+        EnSecuenciaMuerte = false;
 
         JugadorMurio?.Invoke();
     }
 
-    // Bot髇 "Reintentar" de la pantalla de muerte: vuelve al inicio con las 3 vidas.
+    // Bot贸n "Reintentar" de la pantalla de muerte: vuelve al inicio con las 3 vidas.
     public void Reintentar()
     {
+        StopAllCoroutines();
+        EnSecuenciaMuerte = false;
         EnPantallaMuerte = false;
         Time.timeScale = 1f;
 
@@ -151,7 +185,7 @@ public class VidaJugador : MonoBehaviour
 
     void OnDestroy()
     {
-        if (EnPantallaMuerte) Time.timeScale = 1f;
+        if (EnPantallaMuerte || EnSecuenciaMuerte) Time.timeScale = 1f;
     }
 
     void Teletransportar(Vector3 destino)

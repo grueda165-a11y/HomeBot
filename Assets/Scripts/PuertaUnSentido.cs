@@ -2,15 +2,6 @@ using UnityEngine;
 
 // Puerta de un solo sentido: cuando el robot entra en esta zona, se activan unos bloqueos
 // (colliders invisibles) detrás de él y ya no puede volver al cuarto anterior.
-//
-// USO:
-//  1. Crea un objeto vacío justo DESPUÉS de la puerta (ya dentro del cuarto nuevo), ponle un
-//     Box Collider con "Is Trigger" activado y este script.
-//  2. Gira ese objeto para que su flecha AZUL (eje Z, con la herramienta en modo "Local") apunte
-//     hacia donde avanza el robot. Esa flecha define cuál es "delante" y cuál es "atrás".
-//  3. Crea otro objeto vacío con un Box Collider NORMAL (Is Trigger APAGADO) que tape el hueco de
-//     la puerta por la que se entra. Desactívalo (casilla del Inspector) y arrástralo a "Bloqueos".
-//  4. Prueba: al cruzar, el robot no debe poder volver.
 [RequireComponent(typeof(Collider))]
 public class PuertaUnSentido : MonoBehaviour
 {
