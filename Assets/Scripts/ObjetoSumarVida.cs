@@ -8,14 +8,14 @@ public class ObjetoSumarVida : MonoBehaviour
     [Tooltip("Segundos a sumar cuando 'recargaCompleta' está desactivado.")]
     public float segundosASumar = 30f;
 
-    private Collider _collider;
-    private Renderer[] _renderers;
+    private Collider[] _colliders;
+    private Renderer _propioRenderer;
     private bool usado = false;
 
     void Awake()
     {
-        _collider = GetComponent<Collider>();
-        _renderers = GetComponentsInChildren<Renderer>();
+        _colliders = GetComponents<Collider>();
+        _propioRenderer = GetComponent<Renderer>();
     }
 
     void OnEnable()
@@ -32,31 +32,36 @@ public class ObjetoSumarVida : MonoBehaviour
     {
         if (usado) return;
 
-        if (other.CompareTag("Player"))
-        {
-            VidaJugador vida = other.GetComponent<VidaJugador>();
-            if (vida != null)
-            {
-                if (recargaCompleta)
-                    vida.RecargarTiempo();
-                else
-                    vida.SumarVida(segundosASumar);
-                Desaparecer();
-            }
-        }
+        // Busca VidaJugador en el objeto que tocó o en sus padres
+        VidaJugador vida = other.GetComponentInParent<VidaJugador>();
+        if (vida == null) return;
+
+        if (recargaCompleta)
+            vida.RecargarTiempo();
+        else
+            vida.SumarVida(segundosASumar);
+
+        Desaparecer();
     }
 
     void Desaparecer()
     {
         usado = true;
-        _collider.enabled = false;
-        foreach (Renderer r in _renderers) r.enabled = false;
+        foreach (Collider c in _colliders) c.enabled = false;
+        if (_propioRenderer != null) _propioRenderer.enabled = false;
+
+        // Apaga todos los hijos (modelo, luces, partículas, etc.)
+        foreach (Transform hijo in transform)
+            hijo.gameObject.SetActive(false);
     }
 
     void Reaparecer()
     {
         usado = false;
-        _collider.enabled = true;
-        foreach (Renderer r in _renderers) r.enabled = true;
+        foreach (Collider c in _colliders) c.enabled = true;
+        if (_propioRenderer != null) _propioRenderer.enabled = true;
+
+        foreach (Transform hijo in transform)
+            hijo.gameObject.SetActive(true);
     }
 }
