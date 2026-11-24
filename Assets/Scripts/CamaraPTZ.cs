@@ -50,6 +50,11 @@ public class CamaraPTZ : MonoBehaviour
     public bool enCentroDelCuarto = true;
     [Tooltip("Altura sobre los pies del robot cuando la cámara está en el centro del cuarto.")]
     public float alturaEnCentro = 2.5f;
+    [Tooltip("Por zona (mismo orden): altura mínima de la cámara como parte de la altura del cuarto (0 = piso, 1 = techo). " +
+             "0 = no se usa (va a 'Altura En Centro' sobre el robot).")]
+    public float[] alturaMinimaPorZona = { 0f, 0f, 0.55f };
+    [Tooltip("Por zona (mismo orden): cuánto se ve alrededor del robot. 0 = el de siempre (Encuadre Vigilancia). Más alto = se ve más del cuarto.")]
+    public float[] encuadrePorZona = { 0f, 0f, 16f };
     [Tooltip("Fondo negro en vez de cielo: si por algún hueco se ve hacia afuera de la casa, se ve oscuro.")]
     public bool fondoNegro = true;
     [Tooltip("Apagado: en cada zona la cámara se acomoda siguiendo al robot (la de siempre), sin salir de la zona.\n" +
@@ -262,7 +267,14 @@ public class CamaraPTZ : MonoBehaviour
         velocidadJugador = Vector3.zero;
         CalcularDestino(true);
         Cortar();
-        AlinearControles();
+        // Si el jugador sigue apretando una tecla, la dirección NO cambia con la cámara nueva
+        // (así no se devuelve al cuarto anterior). Se ajusta cuando suelta las teclas.
+        if (TeclasSueltas()) AlinearControles();
+    }
+
+    static bool TeclasSueltas()
+    {
+        return Mathf.Abs(Input.GetAxisRaw("Horizontal")) < 0.1f && Mathf.Abs(Input.GetAxisRaw("Vertical")) < 0.1f;
     }
 
     // ...y apaga las demás
@@ -301,7 +313,7 @@ public class CamaraPTZ : MonoBehaviour
                 zonaActual = nueva;
                 CalcularDestino(true);
                 Cortar();
-                AlinearControles();
+                if (TeclasSueltas()) AlinearControles();
                 if (efecto != null) efecto.Mostrar(zonaActual.numero, zonaActual.etiqueta);
                 return;
             }
@@ -333,8 +345,7 @@ public class CamaraPTZ : MonoBehaviour
             cam.fieldOfView = Mathf.SmoothDamp(cam.fieldOfView, FovPara(direccion.magnitude), ref velFov, tiempoZoom, Mathf.Infinity, dt);
 
         // ---- Referencia de controles ----
-        bool soltoTeclas = Mathf.Abs(Input.GetAxisRaw("Horizontal")) < 0.1f && Mathf.Abs(Input.GetAxisRaw("Vertical")) < 0.1f;
-        if (soltoTeclas) AlinearControles();
+        if (TeclasSueltas()) AlinearControles();
     }
 
     // Pone la cámara directamente en su sitio y mirando al robot (al empezar o al reaparecer)
@@ -357,8 +368,10 @@ public class CamaraPTZ : MonoBehaviour
     {
         distancia = Mathf.Max(0.5f, distancia);
         float minimo = zonaActual != null && camaraFijaEnZona ? Mathf.Min(fovMinimoZona, fovMinimoVigilancia) : fovMinimoVigilancia;
-        return Mathf.Clamp(2f * Mathf.Atan(encuadreVigilancia * 0.5f / distancia) * Mathf.Rad2Deg,
-                           minimo, fovMaximoVigilancia);
+        float encuadre = ValorPorZona(encuadrePorZona, zonaActual);
+        if (encuadre <= 0f) encuadre = encuadreVigilancia;
+        return Mathf.Clamp(2f * Mathf.Atan(encuadre * 0.5f / distancia) * Mathf.Rad2Deg,
+                           minimo, Mathf.Max(fovMaximoVigilancia, encuadre > encuadreVigilancia ? 80f : 0f));
     }
 
     // ---------- Zonas ----------
@@ -377,7 +390,7 @@ public class CamaraPTZ : MonoBehaviour
             Bounds b = rs[0].bounds;
             foreach (Renderer r in rs) b.Encapsulate(r.bounds);
 
-            Bounds interior = InteriorDeLaZona(rs, b);
+            Bounds interior = InteriorDeLaZona(rs, b, out Bounds deteccion);
 
             // Cámara fija arriba, en el centro de la zona y debajo del techo
             float y = Mathf.Min(interior.min.y + interior.size.y * alturaEnZona, interior.max.y);
@@ -385,8 +398,10 @@ public class CamaraPTZ : MonoBehaviour
             {
                 etiqueta = i < nombresZonas.Length ? nombresZonas[i] : zonas[i],
                 numero = listaZonas.Count + 1,
+                indice = i,
                 limites = b,
                 interior = interior,
+                deteccion = deteccion,
                 montaje = BajoElTecho(new Vector3(interior.center.x, y, interior.center.z)),
             });
         }
@@ -397,7 +412,7 @@ public class CamaraPTZ : MonoBehaviour
     // El espacio de adentro del cuarto, donde la cámara puede estar sin salirse:
     //  - a los lados: el piso (floor) o, si no hay, la pieza de paredes más grande; con margen a las paredes
     //  - arriba/abajo: desde el piso hasta debajo del techo (roof)
-    Bounds InteriorDeLaZona(Renderer[] rs, Bounds zona)
+    Bounds InteriorDeLaZona(Renderer[] rs, Bounds zona, out Bounds deteccion)
     {
         Renderer piso = null, techo = null, paredes = null;
         foreach (Renderer r in rs)
@@ -411,8 +426,14 @@ public class CamaraPTZ : MonoBehaviour
         }
 
         Bounds lados = piso != null ? piso.bounds : (paredes != null ? paredes.bounds : zona);
+        // Si lo encontrado es mucho más chico que la zona (por ejemplo solo las paredes de una ventana), se usa la zona entera
+        if (lados.size.x * lados.size.z < 0.3f * zona.size.x * zona.size.z) lados = zona;
         float abajo = piso != null ? piso.bounds.max.y : (paredes != null ? paredes.bounds.min.y : zona.min.y);
         float arriba = techo != null ? techo.bounds.min.y : (paredes != null ? paredes.bounds.max.y : zona.max.y);
+
+        // Para saber si el robot está en esta zona: la planta del cuarto (piso o paredes), con altura de sobra
+        deteccion = new Bounds();
+        deteccion.SetMinMax(new Vector3(lados.min.x, abajo - 5f, lados.min.z), new Vector3(lados.max.x, arriba + 2f, lados.max.z));
 
         float m = margenParedes;
         Vector3 min = new Vector3(lados.min.x + m, abajo + 0.5f, lados.min.z + m);
@@ -441,9 +462,83 @@ public class CamaraPTZ : MonoBehaviour
     Vector3 CentroDelCuarto(ZonaCamara zona)
     {
         Bounds b = zona.interior;
-        float y = Mathf.Clamp(jugador.position.y + alturaEnCentro, b.min.y, b.max.y);
+        float y = jugador.position.y + alturaEnCentro;
+        // En algunas zonas (por ejemplo el cuarto del hermano) la cámara va más arriba para ver más del cuarto
+        float fraccion = ValorPorZona(alturaMinimaPorZona, zona);
+        if (fraccion > 0f) y = Mathf.Max(y, b.min.y + b.size.y * fraccion);
+        y = Mathf.Clamp(y, b.min.y, b.max.y);
         Vector3 p = BajoElTecho(new Vector3(b.center.x, y, b.center.z));
-        return new Vector3(p.x, Mathf.Clamp(p.y, b.min.y, b.max.y), p.z);
+        p = new Vector3(p.x, Mathf.Clamp(p.y, b.min.y, b.max.y), p.z);
+        return SitioLibre(p, b);
+    }
+
+    static float ValorPorZona(float[] valores, ZonaCamara zona)
+    {
+        if (valores == null || zona == null || zona.indice < 0 || zona.indice >= valores.Length) return 0f;
+        return valores[zona.indice];
+    }
+
+    // Si el sitio cae dentro de un mueble (por ejemplo la cama), busca el lugar libre más cercano:
+    // primero subiendo, luego corriéndose a los lados en anillos. Siempre dentro del cuarto.
+    Vector3 SitioLibre(Vector3 deseado, Bounds interior)
+    {
+        if (Libre(deseado, interior, true)) return deseado;
+
+        // 1ª vuelta: libre y viendo al robot. 2ª vuelta: al menos libre de muebles
+        // (si algo tapa al robot, se desvanece).
+        for (int vuelta = 0; vuelta < 2; vuelta++)
+        {
+            bool exigirVista = vuelta == 0;
+            float[] alturas = { 0f, 1.5f, 3f, 4.5f, 6f };
+            float[] radios = { 0f, 2f, 4f, 6f, 9f, 12f };
+            foreach (float r in radios)
+            {
+                int pasos = r == 0f ? 1 : 12;
+                for (int k = 0; k < pasos; k++)
+                {
+                    float a = k * Mathf.PI * 2f / pasos;
+                    foreach (float h in alturas)
+                    {
+                        Vector3 c = deseado + new Vector3(Mathf.Cos(a) * r, h, Mathf.Sin(a) * r);
+                        c = new Vector3(Mathf.Clamp(c.x, interior.min.x, interior.max.x),
+                                        Mathf.Clamp(c.y, interior.min.y, interior.max.y),
+                                        Mathf.Clamp(c.z, interior.min.z, interior.max.z));
+                        if (Libre(c, interior, exigirVista)) return c;
+                    }
+                }
+            }
+        }
+        return deseado;   // no encontró nada mejor
+    }
+
+    // Libre = no está dentro de ningún mueble (por su caja o su collider) y, si se pide, ve al robot
+    bool Libre(Vector3 p, Bounds interior, bool exigirVista)
+    {
+        const float radio = 0.6f;
+
+        foreach (Renderer r in GeometriaEscena.Renderers(jugador))
+        {
+            if (r == null || !r.enabled) continue;
+            Bounds bb = r.bounds;
+            // Las piezas que cubren el cuarto de lado a lado (paredes, piso, techo) no cuentan como mueble.
+            // Una cama, aunque sea enorme, sí cuenta.
+            if (bb.size.x >= interior.size.x * 0.85f && bb.size.z >= interior.size.z * 0.85f) continue;
+            bb.Expand(radio * 2f);
+            if (bb.Contains(p)) return false;
+        }
+
+        foreach (Collider c in Physics.OverlapSphere(p, radio, ~0, QueryTriggerInteraction.Ignore))
+            if (!c.transform.IsChildOf(jugador)) return false;
+
+        if (!exigirVista) return true;
+
+        // Que desde ahí se vea al robot
+        Vector3 robot = jugador.position + alturaMirada;
+        Vector3 dir = robot - p;
+        foreach (RaycastHit h in Physics.RaycastAll(p, dir.normalized, dir.magnitude - 0.3f, ~0, QueryTriggerInteraction.Ignore))
+            if (!h.transform.IsChildOf(jugador)) return false;
+
+        return true;
     }
 
     Vector3 DentroDeLaZona(Vector3 sitio, ZonaCamara zona)
@@ -469,15 +564,28 @@ public class CamaraPTZ : MonoBehaviour
     public static ZonaCamara ZonaQueContiene(System.Collections.Generic.List<ZonaCamara> zonas, ZonaCamara actual, Vector3 posicion)
     {
         Vector3 p = posicion + Vector3.up * 0.5f;
-        if (actual != null && actual.limites.Contains(p)) return actual;
 
+        // La zona cuya PLANTA (piso del cuarto) contiene al robot. Si son varias, la más chica (la más precisa).
         ZonaCamara mejor = null;
-        float menorVolumen = float.MaxValue;
+        float menorArea = float.MaxValue;
+        foreach (ZonaCamara z in zonas)
+        {
+            Bounds d = z.deteccion.size == Vector3.zero ? z.limites : z.deteccion;
+            if (!d.Contains(p)) continue;
+            float area = d.size.x * d.size.z;
+            if (actual == z) area *= 0.9f;   // pequeña preferencia por la actual: evita parpadeos en el borde
+            if (area < menorArea) { menorArea = area; mejor = z; }
+        }
+        if (mejor != null) return mejor;
+
+        // Fuera de todas las plantas (por ejemplo en una puerta): la zona más chica cuyo contorno general
+        // lo contiene; si ninguna, se queda con la actual
+        float menor = float.MaxValue;
         foreach (ZonaCamara z in zonas)
         {
             if (!z.limites.Contains(p)) continue;
-            float v = z.limites.size.x * z.limites.size.y * z.limites.size.z;
-            if (v < menorVolumen) { menorVolumen = v; mejor = z; }
+            float area = z.limites.size.x * z.limites.size.z;
+            if (area < menor) { menor = area; mejor = z; }
         }
         return mejor ?? actual;
     }
@@ -679,7 +787,9 @@ public class ZonaCamara
 {
     public string etiqueta;
     public int numero;
+    public int indice = -1;  // posición en la lista de zonas de CamaraPTZ (para los ajustes por zona)
     public Bounds limites;   // toda la zona (para saber si el robot está en ella)
     public Bounds interior;  // donde puede estar la cámara sin salirse del cuarto
+    public Bounds deteccion; // planta del cuarto: si el robot está aquí, está en esta zona
     public Vector3 montaje;
 }

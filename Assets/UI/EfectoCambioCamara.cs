@@ -2,11 +2,13 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-// Efecto de "cambio de cámara de vigilancia": un golpe de estática y un cartel
-// "● REC  CAM 2 · PASILLO" que se ve un momento arriba al centro de la pantalla.
+// Efecto de "cambio de cámara de vigilancia": el cambio es instantáneo y aparece un cartel
+// "● REC  CAM 2 · PASILLO" un momento arriba al centro (la estática es opcional: conEstatica).
 // Lo crea CamaraPTZ sola; no hay que ponerlo en la escena.
 public class EfectoCambioCamara : MonoBehaviour
 {
+    [Tooltip("Golpe de estática al cambiar de cámara. Apagado = cambio instantáneo.")]
+    public bool conEstatica = false;
     public float duracionEstatica = 0.35f;
     public float duracionCartel = 2.5f;
 
@@ -93,7 +95,7 @@ public class EfectoCambioCamara : MonoBehaviour
         float t = Time.unscaledTime - inicio;
 
         // Estática: golpe fuerte que se apaga rápido, con parpadeo
-        float e = t < duracionEstatica ? (1f - t / duracionEstatica) : 0f;
+        float e = conEstatica && t < duracionEstatica ? (1f - t / duracionEstatica) : 0f;
         if (e > 0f)
         {
             estatica.uvRect = new Rect(Random.value, Random.value, 6f, 3.5f);

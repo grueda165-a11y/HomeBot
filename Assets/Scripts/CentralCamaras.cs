@@ -12,6 +12,10 @@ public class CentralCamaras : MonoBehaviour
     private List<CamaraPTZ> camaras;
     private EfectoCambioCamara efecto;
     private ZonaCamara zonaActual;
+    private float ultimoCambio = -10f;
+
+    [Tooltip("Tiempo mínimo entre cambios de cámara (evita idas y vueltas en el borde entre zonas).")]
+    public float tiempoMinimoEntreCambios = 0.5f;
 
     public void Configurar(Transform jugador, List<ZonaCamara> zonas, List<CamaraPTZ> camaras, EfectoCambioCamara efecto)
     {
@@ -28,13 +32,20 @@ public class CentralCamaras : MonoBehaviour
     {
         if (jugador == null || zonas == null) return;
 
+        // ¿Se teletransportó (reaparecer)? Entonces cambia de cámara sin esperar
+        bool salto = Vector3.Distance(jugador.position, ultimaPosicion) > 5f;
+        ultimaPosicion = jugador.position;
+
         ZonaCamara nueva = CamaraPTZ.ZonaQueContiene(zonas, zonaActual, jugador.position);
-        if (nueva != null && nueva != zonaActual)
-        {
-            zonaActual = nueva;
-            Activar(nueva);
-        }
+        if (nueva == null || nueva == zonaActual) return;
+        if (!salto && Time.time - ultimoCambio < tiempoMinimoEntreCambios) return;
+
+        zonaActual = nueva;
+        ultimoCambio = Time.time;
+        Activar(nueva);
     }
+
+    private Vector3 ultimaPosicion;
 
     void Activar(ZonaCamara zona)
     {
