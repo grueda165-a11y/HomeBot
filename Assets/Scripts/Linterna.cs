@@ -2,21 +2,34 @@ using UnityEngine;
 
 public class Linterna : MonoBehaviour
 {
-    public Light luzLinterna;               
+    public Light luzLinterna;
+    [Tooltip("Luces extra (las de atrás del robot). Se prenden y apagan junto con la linterna.")]
+    public Light[] lucesExtra;
     public KeyCode teclaLinterna = KeyCode.L;
     public bool empiezaEncendida = false;
 
     void Start()
     {
-        if (luzLinterna != null)
-            luzLinterna.enabled = empiezaEncendida;
+        PonerEstado(empiezaEncendida);
     }
 
     void Update()
     {
         if (Input.GetKeyDown(teclaLinterna) && luzLinterna != null)
         {
-            luzLinterna.enabled = !luzLinterna.enabled;
+            PonerEstado(!luzLinterna.enabled);
+        }
+    }
+
+    void PonerEstado(bool encendida)
+    {
+        if (luzLinterna != null)
+            luzLinterna.enabled = encendida;
+
+        if (lucesExtra == null) return;
+        foreach (Light luz in lucesExtra)
+        {
+            if (luz != null) luz.enabled = encendida;
         }
     }
 }
