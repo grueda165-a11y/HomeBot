@@ -8,6 +8,12 @@ public class ObjetoSumarVida : MonoBehaviour
     [Tooltip("Segundos a sumar cuando 'recargaCompleta' está desactivado.")]
     public float segundosASumar = 30f;
 
+    // Aviso para otros scripts (por ejemplo la pantalla de victoria) cuando se recoge una batería
+    public static event System.Action<ObjetoSumarVida> Recogida;
+
+    // true mientras está recogida (vuelve a false si el robot muere y las baterías reaparecen)
+    public bool Usado => usado;
+
     private Collider _collider;
     private Renderer[] _renderers;
     private bool usado = false;
@@ -51,6 +57,7 @@ public class ObjetoSumarVida : MonoBehaviour
         usado = true;
         _collider.enabled = false;
         foreach (Renderer r in _renderers) r.enabled = false;
+        Recogida?.Invoke(this);
     }
 
     void Reaparecer()

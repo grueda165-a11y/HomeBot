@@ -91,6 +91,29 @@ public static class SonidosRobot
         return Crear("PiezasCayendo", datos);
     }
 
+    // Melodía corta de victoria: arpegio que sube, con un toque de juguete.
+    public static AudioClip Victoria()
+    {
+        float[] notas = { 523.25f, 659.25f, 783.99f, 1046.5f, 1318.5f };   // Do Mi Sol Do Mi
+        float paso = 0.12f, cola = 0.9f;
+        int n = (int)((paso * notas.Length + cola) * Frecuencia);
+        float[] datos = new float[n];
+        for (int k = 0; k < notas.Length; k++)
+        {
+            int inicio = (int)(k * paso * Frecuencia);
+            float dur = k == notas.Length - 1 ? cola : paso * 1.8f;
+            int largo = (int)(dur * Frecuencia);
+            for (int i = 0; i < largo && inicio + i < n; i++)
+            {
+                float t = (float)i / Frecuencia;
+                float onda = Mathf.Sin(2f * Mathf.PI * notas[k] * t) * 0.7f + Mathf.Sin(2f * Mathf.PI * notas[k] * 2f * t) * 0.2f;
+                float env = Mathf.Min(1f, i / (Frecuencia * 0.005f)) * Mathf.Exp(-t * (k == notas.Length - 1 ? 3f : 9f));
+                datos[inicio + i] += onda * env * 0.3f;
+            }
+        }
+        return Crear("Victoria", datos);
+    }
+
     // Clic de botón de juguete: "bip" corto que sube de tono.
     public static AudioClip Clic()
     {
