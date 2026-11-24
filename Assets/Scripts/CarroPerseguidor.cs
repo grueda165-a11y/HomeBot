@@ -4,7 +4,7 @@ using UnityEngine;
 public class CarroPerseguidor : MonoBehaviour
 {
     [Header("Persecución")]
-    public Transform jugador;          
+    public Transform jugador;
     public float velocidad = 6f;
     public float velocidadGiro = 4f;
 
@@ -48,6 +48,11 @@ public class CarroPerseguidor : MonoBehaviour
     public void Activar()
     {
         activo = true;
+    }
+
+    public void Desactivar()
+    {
+        activo = false;
     }
 
     void Reiniciar()
