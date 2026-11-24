@@ -21,9 +21,9 @@ public class CamaraPTZ : MonoBehaviour
 
     [Header("Montaje tipo vigilancia (automático)")]
     [Tooltip("Altura de la cámara sobre los pies del robot (como una cámara colgada arriba).")]
-    public float alturaVigilancia = 7f;
-    [Tooltip("Distancia mínima al techo.")]
-    public float margenTecho = 0.6f;
+    public float alturaCamara = 4.5f;
+    [Tooltip("Distancia que la cámara deja siempre por debajo del techo.")]
+    public float distanciaAlTecho = 1.5f;
     [Tooltip("Distancia horizontal mínima al robot, para que lo mire en diagonal desde arriba y no desde encima.")]
     public float distanciaMinimaVigilancia = 4f;
     [Tooltip("En cuartos muy grandes, la cámara no se aleja más que esto del robot (horizontal).")]
@@ -32,6 +32,8 @@ public class CamaraPTZ : MonoBehaviour
     public float margenRecolocar = 3f;
     [Tooltip("Hasta dónde se buscan paredes alrededor del robot (la casa es enorme para el robot).")]
     public float alcanceMedicion = 120f;
+    [Tooltip("En las zonas: distancia mínima entre la cámara y las paredes del cuarto (para no salirse).")]
+    public float margenParedes = 2f;
     [Tooltip("Distancia que la cámara deja entre ella y cualquier pared o mueble con collider.")]
     public float separacionParedes = 0.5f;
 
@@ -44,6 +46,12 @@ public class CamaraPTZ : MonoBehaviour
     public string[] zonas = { "room_sister", "hallway", "room_brothers" };
     [Tooltip("Nombre que se muestra al cambiar de cámara (mismo orden que las zonas).")]
     public string[] nombresZonas = { "CUARTO DE LA HERMANA", "PASILLO", "CUARTO DEL DUEÑO" };
+    [Tooltip("La cámara se queda en el CENTRO del cuarto (a la altura del robot + 'Altura En Centro') y gira para seguirlo.")]
+    public bool enCentroDelCuarto = true;
+    [Tooltip("Altura sobre los pies del robot cuando la cámara está en el centro del cuarto.")]
+    public float alturaEnCentro = 2.5f;
+    [Tooltip("Fondo negro en vez de cielo: si por algún hueco se ve hacia afuera de la casa, se ve oscuro.")]
+    public bool fondoNegro = true;
     [Tooltip("Apagado: en cada zona la cámara se acomoda siguiendo al robot (la de siempre), sin salir de la zona.\n" +
              "Encendido: cámara quieta en el centro de cada zona.")]
     public bool camaraFijaEnZona = false;
@@ -143,6 +151,11 @@ public class CamaraPTZ : MonoBehaviour
     {
         cam = GetComponent<Camera>();
         cam.nearClipPlane = Mathf.Min(cam.nearClipPlane, 0.1f);
+        if (fondoNegro)
+        {
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+        }
 
         if (referenciaControles == null)
             referenciaControles = new GameObject("ReferenciaControles_PTZ").transform;
@@ -364,18 +377,54 @@ public class CamaraPTZ : MonoBehaviour
             Bounds b = rs[0].bounds;
             foreach (Renderer r in rs) b.Encapsulate(r.bounds);
 
+            Bounds interior = InteriorDeLaZona(rs, b);
+
             // Cámara fija arriba, en el centro de la zona y debajo del techo
-            float y = Mathf.Min(b.min.y + b.size.y * alturaEnZona, b.max.y - margenTecho - 0.5f);
+            float y = Mathf.Min(interior.min.y + interior.size.y * alturaEnZona, interior.max.y);
             listaZonas.Add(new ZonaCamara
             {
                 etiqueta = i < nombresZonas.Length ? nombresZonas[i] : zonas[i],
                 numero = listaZonas.Count + 1,
                 limites = b,
-                montaje = new Vector3(b.center.x, y, b.center.z),
+                interior = interior,
+                montaje = BajoElTecho(new Vector3(interior.center.x, y, interior.center.z)),
             });
         }
         if (listaZonas.Count == 0 && usarZonas)
             Debug.Log("Cámara PTZ: no encontré las zonas (" + string.Join(", ", zonas) + "); uso la cámara automática.");
+    }
+
+    // El espacio de adentro del cuarto, donde la cámara puede estar sin salirse:
+    //  - a los lados: el piso (floor) o, si no hay, la pieza de paredes más grande; con margen a las paredes
+    //  - arriba/abajo: desde el piso hasta debajo del techo (roof)
+    Bounds InteriorDeLaZona(Renderer[] rs, Bounds zona)
+    {
+        Renderer piso = null, techo = null, paredes = null;
+        foreach (Renderer r in rs)
+        {
+            string n = r.name.ToLowerInvariant();
+            Vector3 s = r.bounds.size;
+            if (n.Contains("floor") && !n.Contains("window") && (piso == null || s.x * s.z > piso.bounds.size.x * piso.bounds.size.z)) piso = r;
+            else if ((n.Contains("roof") || n.Contains("ceiling") || n.Contains("techo")) && !n.Contains("lego") && !n.Contains("hitbox") &&
+                     (techo == null || s.x * s.z > techo.bounds.size.x * techo.bounds.size.z)) techo = r;
+            else if (n.Contains("wall") && (paredes == null || s.x * s.y * s.z > paredes.bounds.size.x * paredes.bounds.size.y * paredes.bounds.size.z)) paredes = r;
+        }
+
+        Bounds lados = piso != null ? piso.bounds : (paredes != null ? paredes.bounds : zona);
+        float abajo = piso != null ? piso.bounds.max.y : (paredes != null ? paredes.bounds.min.y : zona.min.y);
+        float arriba = techo != null ? techo.bounds.min.y : (paredes != null ? paredes.bounds.max.y : zona.max.y);
+
+        float m = margenParedes;
+        Vector3 min = new Vector3(lados.min.x + m, abajo + 0.5f, lados.min.z + m);
+        Vector3 max = new Vector3(lados.max.x - m, arriba - distanciaAlTecho, lados.max.z - m);
+        // Por si el cuarto es más chico que los márgenes
+        if (max.x < min.x) { float c = (min.x + max.x) * 0.5f; min.x = max.x = c; }
+        if (max.z < min.z) { float c = (min.z + max.z) * 0.5f; min.z = max.z = c; }
+        if (max.y < min.y) { float c = (min.y + max.y) * 0.5f; min.y = max.y = c; }
+
+        Bounds interior = new Bounds();
+        interior.SetMinMax(min, max);
+        return interior;
     }
 
     static Transform BuscarEnEscena(Scene escena, string nombre)
@@ -388,16 +437,30 @@ public class CamaraPTZ : MonoBehaviour
 
     // Mantiene la cámara dentro de los límites de su zona (con un pequeño margen),
     // y vuelve a comprobar que no quede detrás de una pared.
+    // En el centro de la habitación, un poco por encima del robot, siempre dentro del cuarto y bajo el techo
+    Vector3 CentroDelCuarto(ZonaCamara zona)
+    {
+        Bounds b = zona.interior;
+        float y = Mathf.Clamp(jugador.position.y + alturaEnCentro, b.min.y, b.max.y);
+        Vector3 p = BajoElTecho(new Vector3(b.center.x, y, b.center.z));
+        return new Vector3(p.x, Mathf.Clamp(p.y, b.min.y, b.max.y), p.z);
+    }
+
     Vector3 DentroDeLaZona(Vector3 sitio, ZonaCamara zona)
     {
-        Bounds b = zona.limites;
-        float m = 1f;
+        // Siempre dentro del cuarto: entre sus paredes, sobre su piso y bajo su techo
+        Bounds b = zona.interior;
         Vector3 dentro = new Vector3(
-            Mathf.Clamp(sitio.x, b.min.x + m, b.max.x - m),
-            Mathf.Clamp(sitio.y, b.min.y + m, b.max.y - margenTecho - m),
-            Mathf.Clamp(sitio.z, b.min.z + m, b.max.z - m));
-        if (dentro == sitio) return sitio;
-        return SinAtravesarParedes(jugador.position + Vector3.up * 1f, dentro);
+            Mathf.Clamp(sitio.x, b.min.x, b.max.x),
+            Mathf.Clamp(sitio.y, b.min.y, b.max.y),
+            Mathf.Clamp(sitio.z, b.min.z, b.max.z));
+        if (dentro != sitio) dentro = SinAtravesarParedes(jugador.position + Vector3.up * 1f, dentro);
+        dentro = BajoElTecho(dentro);
+        // SinAtravesarParedes puede acercarla al robot: se vuelve a asegurar que siga adentro
+        return new Vector3(
+            Mathf.Clamp(dentro.x, b.min.x, b.max.x),
+            Mathf.Clamp(dentro.y, b.min.y, b.max.y),
+            Mathf.Clamp(dentro.z, b.min.z, b.max.z));
     }
 
     // La zona donde está el robot. Si está en el borde entre dos, se queda con la actual.
@@ -426,6 +489,8 @@ public class CamaraPTZ : MonoBehaviour
         Vector3 nuevo;
         if (usarPuntosManuales && contenedorPuntos != null && contenedorPuntos.childCount > 0)
             nuevo = PuntoManualMasCercano();
+        else if (zonaActual != null && enCentroDelCuarto && !camaraFijaEnZona)
+            nuevo = CentroDelCuarto(zonaActual);                         // centro de la habitación, a la altura del robot
         else if (zonaActual != null && camaraFijaEnZona)
             nuevo = zonaActual.montaje;                                  // cámara quieta de la zona
         else if (zonaActual != null)
@@ -474,11 +539,22 @@ public class CamaraPTZ : MonoBehaviour
 
         // Arriba, como cámara de vigilancia, pero siempre debajo del techo
         Vector3 arriba = pecho + plano;
-        float techo = GeometriaEscena.Distancia(jugador, arriba, Vector3.up, alturaVigilancia + 5f);
-        float subir = Mathf.Min(alturaVigilancia - 1f, techo - margenTecho);
-        Vector3 candidato = arriba + Vector3.up * Mathf.Max(0.5f, subir);
+        float porRayo = GeometriaEscena.Distancia(jugador, arriba, Vector3.up, alturaCamara + 5f);
+        float techoY = Mathf.Min(arriba.y + porRayo, GeometriaEscena.TechoSobre(arriba, arriba.y + alturaCamara + 50f));
+        float y = Mathf.Min(pies.y + alturaCamara, techoY - distanciaAlTecho);
+        Vector3 candidato = new Vector3(arriba.x, y, arriba.z);
 
-        return SinAtravesarParedes(pecho, candidato);
+        candidato = SinAtravesarParedes(pecho, candidato);
+        return BajoElTecho(candidato);
+    }
+
+    // Última comprobación: la cámara nunca queda por encima del techo (ni pegada a él)
+    Vector3 BajoElTecho(Vector3 p)
+    {
+        float techoY = GeometriaEscena.TechoSobre(p - Vector3.up * 0.5f, float.MaxValue);
+        if (techoY < float.MaxValue && p.y > techoY - distanciaAlTecho)
+            p.y = techoY - distanciaAlTecho;
+        return p;
     }
 
     // Seguridad: si entre el robot y el sitio elegido hay una pared o techo (con collider),
@@ -573,7 +649,7 @@ public class CamaraPTZ : MonoBehaviour
             Gizmos.DrawWireCube(b.center, b.size);
 
             // Cámara: arriba en la zona, mirando hacia abajo al centro
-            Vector3 pos = new Vector3(b.center.x, Mathf.Min(b.min.y + b.size.y * alturaEnZona, b.max.y - margenTecho - 0.5f), b.center.z);
+            Vector3 pos = new Vector3(b.center.x, Mathf.Min(b.min.y + b.size.y * alturaEnZona, b.max.y - distanciaAlTecho - 0.5f), b.center.z);
             Vector3 hacia = new Vector3(b.center.x, b.min.y, b.center.z) + (new Vector3(b.size.x, 0f, 0f) * 0.15f) - pos;
             Gizmos.color = c;
             Gizmos.DrawSphere(pos, Mathf.Max(0.4f, b.size.magnitude * 0.006f));
@@ -603,6 +679,7 @@ public class ZonaCamara
 {
     public string etiqueta;
     public int numero;
-    public Bounds limites;
+    public Bounds limites;   // toda la zona (para saber si el robot está en ella)
+    public Bounds interior;  // donde puede estar la cámara sin salirse del cuarto
     public Vector3 montaje;
 }

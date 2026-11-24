@@ -29,6 +29,49 @@ public static class GeometriaEscena
         return renderers;
     }
 
+    // ---------- Techo ----------
+
+    static readonly List<Renderer> techos = new List<Renderer>();
+    static int escenaTechos = -1;
+
+    // Piezas que son techo de verdad: se llaman roof / ceiling / techo y son grandes
+    // (así no cuentan los techitos de juguete, como el de la casa Lego).
+    static List<Renderer> Techos()
+    {
+        int escena = UnityEngine.SceneManagement.SceneManager.GetActiveScene().handle;
+        if (escena == escenaTechos) return techos;
+        techos.Clear();
+        foreach (MeshRenderer r in Object.FindObjectsByType<MeshRenderer>(FindObjectsSortMode.None))
+        {
+            string n = r.name.ToLowerInvariant();
+            if (!(n.Contains("roof") || n.Contains("ceiling") || n.Contains("techo"))) continue;
+            if (n.Contains("lego") || n.Contains("hitbox")) continue;
+            Vector3 t = r.bounds.size;
+            if (t.x < 8f && t.z < 8f) continue;
+            techos.Add(r);
+        }
+        escenaTechos = escena;
+        return techos;
+    }
+
+    // Altura del techo justo encima de un punto (la cara de abajo del techo), o "porDefecto" si no hay.
+    public static float TechoSobre(Vector3 p, float porDefecto)
+    {
+        float y = porDefecto;
+        foreach (Renderer r in Techos())
+        {
+            if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
+            Bounds b = r.bounds;
+            if (p.x < b.min.x || p.x > b.max.x || p.z < b.min.z || p.z > b.max.z) continue;
+            if (b.min.y > p.y && b.min.y < y) y = b.min.y;
+        }
+
+        // También lo que tenga collider justo arriba
+        if (Physics.Raycast(p, Vector3.up, out RaycastHit h, Mathf.Max(0.01f, y - p.y), ~0, QueryTriggerInteraction.Ignore))
+            y = Mathf.Min(y, h.point.y);
+        return y;
+    }
+
     // Distancia hasta lo primero que hay en esa dirección (paredes visibles o colliders).
     // Ignora objetos cuya caja contiene el punto de origen (por ejemplo un piso enorme).
     public static float Distancia(Transform jugador, Vector3 origen, Vector3 direccion, float maximo)
