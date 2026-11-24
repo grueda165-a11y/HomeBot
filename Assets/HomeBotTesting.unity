@@ -39000,7 +39000,7 @@ GameObject:
   - component: {fileID: 551655751}
   - component: {fileID: 551655750}
   m_Layer: 0
-  m_Name: Bateria9 (1)
+  m_Name: Bateriaf
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -39051,7 +39051,7 @@ Animator:
   m_GameObject: {fileID: 551655745}
   m_Enabled: 1
   m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 9100000, guid: db31451594599f044b9ff3f76cf74365, type: 2}
+  m_Controller: {fileID: 9100000, guid: da357720278f15e4292e5f78e46a8202, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
@@ -39072,7 +39072,7 @@ Transform:
   m_GameObject: {fileID: 551655745}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -57.659, y: 5.215, z: 11.267}
+  m_LocalPosition: {x: -57.659, y: 5.496, z: 11.267}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
